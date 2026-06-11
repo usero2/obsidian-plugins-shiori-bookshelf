@@ -1,18 +1,18 @@
 import { App, PluginSettingTab, Setting } from 'obsidian';
-import MyPlugin from './main';
+import ShioriBookshelfPlugin from './main';
 
-export interface MyPluginSettings {
+export interface ShioriBookshelfSettings {
 	mySetting: string;
 }
 
-export const DEFAULT_SETTINGS: MyPluginSettings = {
+export const DEFAULT_SETTINGS: ShioriBookshelfSettings = {
 	mySetting: 'default',
 };
 
-export class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
+export class ShioriBookshelfSettingTab extends PluginSettingTab {
+	plugin: ShioriBookshelfPlugin;
 
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: ShioriBookshelfPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
