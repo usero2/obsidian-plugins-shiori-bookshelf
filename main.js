@@ -73,6 +73,16 @@ function getCoverUrl(plugin, coverImg, contextPath) {
     return null;
 }
 
+function openBook(plugin, bookFile) {
+    if (!bookFile) return;
+    const ext = bookFile.extension ? bookFile.extension.toLowerCase() : "";
+    if (["cbz", "cbr", "mobi", "zip"].includes(ext)) {
+        plugin.app.openWithDefaultApp(bookFile.path);
+    } else {
+        plugin.app.workspace.getLeaf(false).openFile(bookFile);
+    }
+}
+
 function renderBooks(grid, books, plugin) {
     grid.empty();
     for (let book of books) {
@@ -139,7 +149,7 @@ function renderBooks(grid, books, plugin) {
         extLabel.style.borderRadius = "4px";
 
         card.onclick = () => {
-            plugin.app.workspace.getLeaf(false).openFile(book.file);
+            openBook(plugin, book.file);
         };
     }
 }
@@ -932,7 +942,7 @@ class SeriesDetailsView extends ItemView {
                 const url = getCoverUrl(plugin, book.metadata.cover, book.file.path);
                 if (url) { const i = img.createEl("img"); i.src = url; i.style.cssText = "width:100%;height:100%;object-fit:cover;"; }
                 else img.createEl("span", { text: book.extension.toUpperCase() }).style.cssText = "font-weight:bold;color:var(--text-muted);font-size:11px;";
-                card.onclick = () => plugin.app.workspace.getLeaf(false).openFile(book.file);
+                card.onclick = () => openBook(plugin, book.file);
             });
         };
 
@@ -965,7 +975,7 @@ class SeriesDetailsView extends ItemView {
                 if (book.metadata.author) info.createEl("div", { text: book.metadata.author }).style.cssText = "font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
 
                 row.createEl("span", { text: book.extension.toUpperCase() }).style.cssText = "font-size:10px;padding:2px 6px;border-radius:4px;background:var(--background-modifier-border);color:var(--text-faint);flex-shrink:0;";
-                row.onclick = () => plugin.app.workspace.getLeaf(false).openFile(book.file);
+                row.onclick = () => openBook(plugin, book.file);
             });
         };
 
@@ -995,7 +1005,7 @@ class SeriesDetailsView extends ItemView {
                     d.style.cssText = "font-size:11px;color:var(--text-faint);margin-top:4px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;";
                 }
                 info.createEl("span", { text: book.extension.toUpperCase() }).style.cssText = "margin-top:auto;align-self:flex-start;font-size:10px;padding:2px 6px;border-radius:4px;background:var(--background-modifier-border);color:var(--text-faint);";
-                card.onclick = () => plugin.app.workspace.getLeaf(false).openFile(book.file);
+                card.onclick = () => openBook(plugin, book.file);
             });
         };
 

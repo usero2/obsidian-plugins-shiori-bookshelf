@@ -4,7 +4,21 @@ Shiori Bookshelf uses "Libraries" to determine which folders in your vault conta
 
 ## Series vs. Single Libraries
 
-- **Series Libraries:** Folders added here will automatically group books into "Series" based on their immediate parent subfolder. For example, if you add the `Manga` folder as a Series Library, the books inside `Manga/One Piece` will be grouped into a series named "One Piece".
+- **Series Libraries:** Folders added here will automatically group books into "Series" based on their immediate parent subfolder. 
+  
+  **Folder Structure Example:**
+  If you add `Library/Manga` as a Series Library, your folders should look like this:
+  ```text
+  📁 Library
+    📁 Manga             <-- (You add this folder to Series Libraries)
+      📁 One Piece       <-- (This becomes the Series name)
+         📄 Vol 1.cbz
+         📄 Vol 2.cbz
+      📁 Naruto          <-- (This becomes another Series name)
+         📄 Vol 1.cbz
+  ```
+  In the Bookshelf view, you will see two series cards: "One Piece" and "Naruto".
+
 - **Single Libraries:** Folders added here will treat every book as an individual, standalone item. Subfolders are ignored for grouping purposes. This is perfect for standalone Ebooks or textbooks.
 
 ## Method 1: Setting up via the Context Menu (Recommended)
