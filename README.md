@@ -2,6 +2,9 @@
 
 Shiori Bookshelf is a powerful Obsidian plugin that transforms your vault into a beautiful, fully-featured digital library. It allows you to organize, browse your PDF, EPUB, and CBZ files natively inside Obsidian, complete with automatic cover extraction and metadata management.
 
+![](images/Obsidian_cZQh0qYYAj.png)
+![](images/Obsidian_cnlCuAD5kD.png)
+
 ## ✨ Features
 
 - **Library Organization:**
@@ -41,6 +44,8 @@ For detailed, step-by-step instructions on how to use specific features, please 
 - [How to Use the Bookshelf View](how_to_use_bookshelf_view.md)
 - [How to Manage Metadata and Covers](how_to_manage_metadata_and_covers.md)
 - [How to Use Force Rename](how_to_use_force_rename.md)
+
+![](images/Obsidian_2NtmA9bDXU.png)
 
 ## ❤️ Support & Donate
 
