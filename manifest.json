@@ -1,0 +1,13 @@
+{
+	"id": "obsidian-plugins-bookshelf",
+	"name": "Shiori Bookshelf",
+	"version": "1.0.0",
+	"minAppVersion": "1.0.0",
+	"description": "Manage and read your ebooks like Komga/Kavita within Obsidian.",
+	"author": "usero2-endofday",
+	"authorUrl": "https://github.com/usero2",
+	"fundingUrl": {
+	  "Buy me a Coffee": "https://buymeacoffee.com/endofday"
+	},
+	"isDesktopOnly": false
+}
