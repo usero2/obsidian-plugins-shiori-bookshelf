@@ -3,7 +3,7 @@
 	"name": "Shiori Bookshelf",
 	"version": "1.0.0",
 	"minAppVersion": "1.0.0",
-	"description": "Manage and read your ebooks like Komga/Kavita within Obsidian.",
+	"description": "A visual bookshelf to manage, organize, and read your manga, light novels, and ebooks directly within Obsidian, featuring automatic cover extraction and external reader support.",
 	"author": "usero2-endofday",
 	"authorUrl": "https://github.com/usero2",
 	"fundingUrl": {

@@ -7,19 +7,36 @@ Shiori Bookshelf uses "Libraries" to determine which folders in your vault conta
 - **Series Libraries:** Folders added here will automatically group books into "Series" based on their immediate parent subfolder. 
   
   **Folder Structure Example:**
-  If you add `Library/Manga` as a Series Library, your folders should look like this:
+  If you add `Library/Books` as a Series Library, your folders should look like this:
   ```text
   📁 Library
-    📁 Manga             <-- (You add this folder to Series Libraries)
-      📁 One Piece       <-- (This becomes the Series name)
-         📄 Vol 1.cbz
-         📄 Vol 2.cbz
+    📁 Books             <-- (You add this folder to Series Libraries)
+      📁 Harry Potter    <-- (This becomes the Series name)
+         📄 Book 1.epub
+         📄 Book 2.pdf
       📁 Naruto          <-- (This becomes another Series name)
          📄 Vol 1.cbz
+         📄 Vol 2.cbz
   ```
   In the Bookshelf view, you will see two series cards: "One Piece" and "Naruto".
 
 - **Single Libraries:** Folders added here will treat every book as an individual, standalone item. Subfolders are ignored for grouping purposes. This is perfect for standalone Ebooks or textbooks.
+
+  **Folder Structure Example:**
+  If you add `Library/Standalone` as a Single Library, your folders should look like this:
+  ```text
+  📁 Library
+    📁 Standalone        <-- (You add this folder to Single Libraries)
+       📄 Atomic Habits.epub
+       📄 Clean Code.pdf
+       📄 Web Design Guide.pdf
+  ```
+
+> [!TIP]
+> **Recommended Plugin for EPUBs:** 
+> Obsidian does not natively support reading `.epub` files. To read them directly inside Obsidian, we highly recommend using the **EPUB Reader with TTS** plugin.
+> - **Community Plugin:** [EPUB Reader with TTS](https://community.obsidian.md/plugins/epub-reader-with-tts)
+> - **GitHub:** [obsidian-plugins-epub-reader-with-tts](https://github.com/usero2/obsidian-plugins-epub-reader-with-tts)
 
 ## Method 1: Setting up via the Context Menu (Recommended)
 

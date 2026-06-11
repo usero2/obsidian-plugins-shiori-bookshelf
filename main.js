@@ -2,6 +2,7 @@ const { Plugin, PluginSettingTab, Setting, ItemView, Notice, Modal, requestUrl }
 
 const VIEW_TYPE_BOOKSHELF = "bookshelf-view";
 const VIEW_TYPE_SERIES_DETAILS = "series-details-view";
+const VIEW_TYPE_DUMMY_EXT = "bookshelf-dummy-ext-view";
 
 const DEFAULT_SETTINGS = {
     libraries: "Lite Novel\nManga",
@@ -76,7 +77,9 @@ function getCoverUrl(plugin, coverImg, contextPath) {
 function openBook(plugin, bookFile) {
     if (!bookFile) return;
     const ext = bookFile.extension ? bookFile.extension.toLowerCase() : "";
-    if (["cbz", "cbr", "mobi", "zip"].includes(ext)) {
+    const viewType = plugin.app.viewRegistry ? plugin.app.viewRegistry.getTypeByExtension(ext) : null;
+    
+    if (viewType === VIEW_TYPE_DUMMY_EXT || ["cbz", "cbr", "mobi", "zip"].includes(ext)) {
         plugin.app.openWithDefaultApp(bookFile.path);
     } else {
         plugin.app.workspace.getLeaf(false).openFile(bookFile);
@@ -1673,18 +1676,153 @@ class BookshelfSettingTab extends PluginSettingTab {
         this.plugin = plugin;
     }
 
+    async renderHowToTab(container) {
+        container.empty();
+        container.createEl("p", { text: "Loading instructions..." });
+
+        const files = [
+            "how_to_setup_libraries.md",
+            "how_to_use_bookshelf_view.md",
+            "how_to_manage_metadata_and_covers.md",
+            "how_to_use_force_rename.md"
+        ];
+
+        let fileContents = [];
+        try {
+            const fs = require('fs');
+            const path = require('path');
+            let basePath = "";
+            if (this.app.vault.adapter.getBasePath) {
+                basePath = this.app.vault.adapter.getBasePath();
+            }
+            if (basePath) {
+                const pluginDir = path.join(basePath, this.plugin.manifest.dir);
+                for (let file of files) {
+                    try {
+                        let text = fs.readFileSync(path.join(pluginDir, file), "utf8");
+                        let title = file.replace(/_/g, " ").replace(".md", "");
+                        let firstLineMatch = text.match(/^#\s+(.*)/m);
+                        if (firstLineMatch) {
+                            title = firstLineMatch[1];
+                            text = text.replace(/^#\s+.*\n/, '');
+                        }
+                        fileContents.push({ title, text });
+                    } catch (e) {}
+                }
+            }
+        } catch (e) {}
+
+        container.empty();
+        const { MarkdownRenderer } = require('obsidian');
+        
+        const detailsElements = [];
+        
+        for (let i = 0; i < fileContents.length; i++) {
+            let item = fileContents[i];
+            
+            let details = container.createEl("details");
+            details.style.cssText = "margin-bottom: 10px; border: 1px solid var(--background-modifier-border); border-radius: 6px; padding: 5px 10px; background: var(--background-secondary);";
+            detailsElements.push(details);
+            
+            // Accordion behavior: auto-collapse others
+            details.addEventListener("toggle", (e) => {
+                if (details.open) {
+                    detailsElements.forEach(d => {
+                        if (d !== details && d.open) d.open = false;
+                    });
+                }
+            });
+
+            let summary = details.createEl("summary");
+            summary.style.cssText = "font-weight: 600; cursor: pointer; padding: 5px 0; font-size: 1.1em; color: var(--text-normal);";
+            summary.innerText = item.title;
+
+            let contentDiv = details.createDiv();
+            contentDiv.style.cssText = "margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--background-modifier-border); user-select: text; -webkit-user-select: text;";
+            
+            await MarkdownRenderer.renderMarkdown(item.text, contentDiv, '', this.plugin);
+        }
+    }
+
+    async renderRecommendedTab(container) {
+        container.empty();
+        const md = `> [!TIP]\n> **Recommended Plugin for EPUBs:** \n> Obsidian does not natively support reading \`.epub\` files. To read them directly inside Obsidian, we highly recommend using the **EPUB Reader with TTS** plugin.\n> - **Community Plugin:** [EPUB Reader with TTS](https://community.obsidian.md/plugins/epub-reader-with-tts)\n> - **GitHub:** [obsidian-plugins-epub-reader-with-tts](https://github.com/usero2/obsidian-plugins-epub-reader-with-tts)`;
+        const { MarkdownRenderer } = require('obsidian');
+        await MarkdownRenderer.renderMarkdown(md, container, '', this.plugin);
+    }
+
     display() {
         const {containerEl} = this;
         containerEl.empty();
         
         containerEl.createEl("h2").innerHTML = "Shiori <span style='font-size:0.7em'>Bookshelf</span> Settings";
+
+        const tabsContainer = containerEl.createDiv();
+        tabsContainer.style.cssText = "display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 5px;";
+
+        const btnGeneral = tabsContainer.createEl("button", { text: "General" });
+        const btnHowTo = tabsContainer.createEl("button", { text: "How to" });
+        const btnRecommended = tabsContainer.createEl("button", { text: "Recommended Reader" });
+
+        const activeStyle = "background: var(--interactive-accent); color: var(--text-on-accent);";
+        const inactiveStyle = "background: transparent; color: var(--text-muted); box-shadow: none;";
+
+        btnGeneral.style.cssText = activeStyle;
+        btnHowTo.style.cssText = inactiveStyle;
+        btnRecommended.style.cssText = inactiveStyle;
+
+        const generalContainer = containerEl.createDiv();
+        const howToContainer = containerEl.createDiv();
+        howToContainer.style.display = "none";
+        howToContainer.style.userSelect = "text";
+        howToContainer.style.webkitUserSelect = "text";
         
-        let desc = containerEl.createEl("p", { text: "This plugin supports reading PDF, EPUB, and CBZ files." });
+        const recommendedContainer = containerEl.createDiv();
+        recommendedContainer.style.display = "none";
+        recommendedContainer.style.userSelect = "text";
+        recommendedContainer.style.webkitUserSelect = "text";
+
+        btnGeneral.onclick = () => {
+            btnGeneral.style.cssText = activeStyle;
+            btnHowTo.style.cssText = inactiveStyle;
+            btnRecommended.style.cssText = inactiveStyle;
+            generalContainer.style.display = "block";
+            howToContainer.style.display = "none";
+            recommendedContainer.style.display = "none";
+        };
+
+        btnHowTo.onclick = () => {
+            btnHowTo.style.cssText = activeStyle;
+            btnGeneral.style.cssText = inactiveStyle;
+            btnRecommended.style.cssText = inactiveStyle;
+            howToContainer.style.display = "block";
+            generalContainer.style.display = "none";
+            recommendedContainer.style.display = "none";
+            if (!this.howToRendered) {
+                this.renderHowToTab(howToContainer);
+                this.howToRendered = true;
+            }
+        };
+
+        btnRecommended.onclick = () => {
+            btnRecommended.style.cssText = activeStyle;
+            btnGeneral.style.cssText = inactiveStyle;
+            btnHowTo.style.cssText = inactiveStyle;
+            recommendedContainer.style.display = "block";
+            generalContainer.style.display = "none";
+            howToContainer.style.display = "none";
+            if (!this.recommendedRendered) {
+                this.renderRecommendedTab(recommendedContainer);
+                this.recommendedRendered = true;
+            }
+        };
+        
+        let desc = generalContainer.createEl("p", { text: "This plugin supports reading PDF, EPUB, and CBZ files." });
         desc.style.color = "var(--text-muted)";
         desc.style.fontSize = "14px";
         desc.style.marginBottom = "20px";
 
-        new Setting(containerEl)
+        new Setting(generalContainer)
             .setName("Set Shiori Bookshelf as Homepage")
             .setDesc("Automatically open and pin the Shiori Bookshelf view when Obsidian starts.")
             .addToggle(toggle => toggle
@@ -1694,7 +1832,7 @@ class BookshelfSettingTab extends PluginSettingTab {
                     await this.plugin.saveSettings();
                 }));
 
-        new Setting(containerEl)
+        new Setting(generalContainer)
             .setName("Enable Force Rename")
             .setDesc("Adds a 'Force Rename' button to series and books, allowing you to use restricted characters like #, ^, [, ], |. WARNING: This breaks Obsidian's markdown linking.")
             .addToggle(toggle => toggle
@@ -1709,7 +1847,7 @@ class BookshelfSettingTab extends PluginSettingTab {
             el.rows = Math.max(4, lines);
         };
 
-        new Setting(containerEl)
+        new Setting(generalContainer)
             .setName("Series Libraries")
             .setDesc("List your series library folders here, one per line. Books in these folders will be grouped into series by subfolder.")
             .addTextArea(text => {
@@ -1725,7 +1863,7 @@ class BookshelfSettingTab extends PluginSettingTab {
                 text.inputEl.addEventListener('input', () => adjustRows(text.inputEl));
             });
 
-        new Setting(containerEl)
+        new Setting(generalContainer)
             .setName("Single Libraries")
             .setDesc("List your single library folders here, one per line. Books in these folders will be treated as individual, standalone items, regardless of subfolders.")
             .addTextArea(text => {
@@ -1743,7 +1881,7 @@ class BookshelfSettingTab extends PluginSettingTab {
 
 
 
-        new Setting(containerEl)
+        new Setting(generalContainer)
             .setName("Hide cover images in file explorer")
             .setDesc("When enabled, automatically extracted cover images (files ending with _cover.jpg) will be hidden from the navigation pane.")
             .addToggle(toggle => toggle
@@ -1755,7 +1893,7 @@ class BookshelfSettingTab extends PluginSettingTab {
                 }));
 
 
-        new Setting(containerEl)
+        new Setting(generalContainer)
             .setName("Hide book metadata files")
             .setDesc("When enabled, metadata .md files that share the exact same name as supported book files will be hidden from the file explorer.")
             .addToggle(toggle => toggle
@@ -1766,7 +1904,7 @@ class BookshelfSettingTab extends PluginSettingTab {
                     this.plugin.triggerUpdateHideBookMdCss();
                 }));
 
-        new Setting(containerEl)
+        new Setting(generalContainer)
             .setName("Ignore Folders")
             .setDesc("Comma-separated list of folder names to ignore during scan. Books in these folders will not be shown.")
             .addText(text => text
@@ -1779,12 +1917,105 @@ class BookshelfSettingTab extends PluginSettingTab {
     }
 }
 
+class DummyExtView extends ItemView {
+    constructor(leaf, plugin) {
+        super(leaf);
+        this.plugin = plugin;
+    }
+    getViewType() { return VIEW_TYPE_DUMMY_EXT; }
+    getDisplayText() { return "Opening file..."; }
+    getIcon() { return "document"; }
+
+    async setState(state, result) {
+        await super.setState(state, result);
+        if (state && state.file) {
+            const file = this.plugin.app.vault.getAbstractFileByPath(state.file);
+            if (file) {
+                this.plugin.app.openWithDefaultApp(file.path);
+            }
+        }
+        setTimeout(() => this.leaf.detach(), 100);
+    }
+}
+
 class BookshelfPlugin extends Plugin {
     async onload() {
         await this.loadSettings();
 
         this.registerView(VIEW_TYPE_BOOKSHELF, (leaf) => new BookshelfView(leaf, this));
         this.registerView(VIEW_TYPE_SERIES_DETAILS, (leaf) => new SeriesDetailsView(leaf, this));
+        this.registerView(VIEW_TYPE_DUMMY_EXT, (leaf) => new DummyExtView(leaf, this));
+        // Dynamically surrender extensions if another plugin wants them
+        this.originalRegisterExtensions = this.app.viewRegistry.registerExtensions.bind(this.app.viewRegistry);
+        this.app.viewRegistry.registerExtensions = (exts, type) => {
+            if (type !== VIEW_TYPE_DUMMY_EXT) {
+                const overlap = exts.filter(e => ["cbz", "cbr", "mobi", "zip", "epub"].includes(e));
+                if (overlap.length > 0) {
+                    try {
+                        if (this.app.viewRegistry.unregisterExtensions) {
+                            this.app.viewRegistry.unregisterExtensions(overlap);
+                        }
+                    } catch (e) {}
+                }
+            }
+            return this.originalRegisterExtensions(exts, type);
+        };
+
+        // Dynamically reclaim extensions if another plugin drops them
+        if (this.app.viewRegistry.unregisterExtensions) {
+            this.originalUnregisterExtensions = this.app.viewRegistry.unregisterExtensions.bind(this.app.viewRegistry);
+            this.app.viewRegistry.unregisterExtensions = (exts) => {
+                this.originalUnregisterExtensions(exts);
+                const reclaim = exts.filter(e => ["cbz", "cbr", "mobi", "zip", "epub"].includes(e));
+                if (reclaim.length > 0) {
+                    setTimeout(() => {
+                        try { this.originalRegisterExtensions(reclaim, VIEW_TYPE_DUMMY_EXT); } catch (e) {}
+                    }, 10);
+                }
+            };
+        }
+
+        this.app.workspace.onLayoutReady(() => {
+            const extsToRegister = ["cbz", "cbr", "mobi", "zip", "epub"].filter(ext => {
+                return !this.app.viewRegistry.getTypeByExtension(ext);
+            });
+            if (extsToRegister.length > 0) {
+                try { this.originalRegisterExtensions(extsToRegister, VIEW_TYPE_DUMMY_EXT); } catch (e) {}
+            }
+        });
+
+        const handleIntercept = (evt) => {
+            if (evt.button !== 0 && evt.button !== 1) return;
+            
+            let targetPath = null;
+            
+            const navFileTitle = evt.target.closest('.nav-file-title');
+            if (navFileTitle) {
+                targetPath = navFileTitle.getAttribute('data-path');
+            } else {
+                const link = evt.target.closest('.internal-link');
+                if (link) {
+                    const href = link.getAttribute('data-href');
+                    if (href) {
+                        const file = this.app.metadataCache.getFirstLinkpathDest(href, "");
+                        if (file) targetPath = file.path;
+                    }
+                }
+            }
+
+            if (targetPath) {
+                const ext = targetPath.split('.').pop().toLowerCase();
+                const viewType = this.app.viewRegistry ? this.app.viewRegistry.getTypeByExtension(ext) : null;
+                if (viewType === VIEW_TYPE_DUMMY_EXT) {
+                    evt.preventDefault();
+                    evt.stopPropagation();
+                    this.app.openWithDefaultApp(targetPath);
+                }
+            }
+        };
+
+        this.registerDomEvent(document, 'click', handleIntercept, { capture: true });
+        this.registerDomEvent(document, 'auxclick', handleIntercept, { capture: true });
 
         this.addRibbonIcon('library', 'Open Shiori Bookshelf', () => {
             this.activateView();
@@ -1999,6 +2230,12 @@ class BookshelfPlugin extends Plugin {
         this.applyHideCoverCss(false);
         this.applyHideBookMdCss(false);
         if (this._hideBookMdTimeout) clearTimeout(this._hideBookMdTimeout);
+        if (this.originalRegisterExtensions) {
+            this.app.viewRegistry.registerExtensions = this.originalRegisterExtensions;
+        }
+        if (this.originalUnregisterExtensions) {
+            this.app.viewRegistry.unregisterExtensions = this.originalUnregisterExtensions;
+        }
     }
 
     applyHideCoverCss(forceShow) {
