@@ -1,10 +1,9 @@
 # Shiori Bookshelf
 
-Shiori Bookshelf is a powerful Obsidian plugin that transforms your vault into a beautiful, fully-featured digital library. It allows you to organize, browse, and read your PDF, EPUB, and CBZ files natively inside Obsidian, complete with automatic cover extraction and metadata management.
+Shiori Bookshelf is a powerful Obsidian plugin that transforms your vault into a beautiful, fully-featured digital library. It allows you to organize, browse your PDF, EPUB, and CBZ files natively inside Obsidian, complete with automatic cover extraction and metadata management.
 
 ## ✨ Features
 
-- **Native Reading:** Seamlessly read PDF, EPUB, and CBZ files directly within Obsidian.
 - **Library Organization:**
   - **Series Libraries:** Automatically group books into series based on their subfolders.
   - **Single Libraries:** Manage standalone books independently, regardless of folder structure.
@@ -30,7 +29,7 @@ Shiori Bookshelf is a powerful Obsidian plugin that transforms your vault into a
 *Note: This plugin is currently in development and can be installed manually.*
 
 1. Download the latest release from the GitHub repository.
-2. Extract the contents (`main.js`, `manifest.json`, `styles.css`) into your Obsidian vault's plugin directory: `[Vault]/.obsidian/plugins/obsidian-plugins-bookshelf/`.
+2. Extract the contents (`main.js`, `manifest.json`, `styles.css`) into your Obsidian vault's plugin directory: `[Vault]/.obsidian/plugins/obsidian-plugins-shiori-bookshelf/`.
 3. Open Obsidian Settings -> **Community Plugins**.
 4. Refresh the plugin list and enable **Shiori Bookshelf**.
 
