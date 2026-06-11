@@ -1,92 +1,56 @@
-# Obsidian Sample Plugin
+# Shiori Bookshelf
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+Shiori Bookshelf is a powerful Obsidian plugin that transforms your vault into a beautiful, fully-featured digital library. It allows you to organize, browse, and read your PDF, EPUB, and CBZ files natively inside Obsidian, complete with automatic cover extraction and metadata management.
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+## ✨ Features
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
+- **Native Reading:** Seamlessly read PDF, EPUB, and CBZ files directly within Obsidian.
+- **Library Organization:**
+  - **Series Libraries:** Automatically group books into series based on their subfolders.
+  - **Single Libraries:** Manage standalone books independently, regardless of folder structure.
+- **Beautiful Bookshelf View:**
+  - A visually rich, grid-based gallery view displaying your books and series covers.
+  - Search by Title or Writer.
+  - Filter by reading status (*All*, *Read*, *Unread*, *Reading*).
+  - Automatically sorts series by the last updated book.
+  - Lazy loading with infinite scroll (loads 50 items at a time for optimal performance).
+- **Automated Metadata & Covers:**
+  - Automatically extracts cover images (`_cover.jpg`) from your book files.
+  - Automatically generates a companion markdown (`.md`) file for each book to store reading status, writer, and title.
+- **Context Menu Integration:**
+  - **Add to Libraries:** Quickly add folders to your Series or Single libraries via right-click.
+  - **Scan:** Manually trigger cover extraction for all books inside a folder.
+  - **Open Metadata file:** Quickly jump to the hidden `.md` metadata file of any book to edit its properties.
+  - **Force Rename:** Bypass Obsidian's restrictive character limits to rename files using characters like `#`, `^`, `[`, `]`, `|`. Automatically syncs the new name to the companion metadata and cover files.
+- **Clean File Explorer:**
+  - Options in settings to automatically hide the extracted `_cover.jpg` and metadata `.md` files from your Obsidian file explorer to keep your workspace clutter-free.
 
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open modal (simple)" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and outputs a Notice on click.
-- Registers a global interval which logs 'setInterval' to the console.
+## 🚀 Installation
 
-## First time developing plugins?
+*Note: This plugin is currently in development and can be installed manually.*
 
-Quick starting guide for new plugin devs:
+1. Download the latest release from the GitHub repository.
+2. Extract the contents (`main.js`, `manifest.json`, `styles.css`) into your Obsidian vault's plugin directory: `[Vault]/.obsidian/plugins/obsidian-plugins-bookshelf/`.
+3. Open Obsidian Settings -> **Community Plugins**.
+4. Refresh the plugin list and enable **Shiori Bookshelf**.
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `src/main.ts` to `main.js`.
-- Make changes to `src/main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+## 📖 Documentation & Guides
 
-## Releasing new releases
+For detailed, step-by-step instructions on how to use specific features, please refer to the following guides:
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+- [How to Setup Libraries](how_to_setup_libraries.md)
+- [How to Use the Bookshelf View](how_to_use_bookshelf_view.md)
+- [How to Manage Metadata and Covers](how_to_manage_metadata_and_covers.md)
+- [How to Use Force Rename](how_to_use_force_rename.md)
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+## ❤️ Support & Donate
 
-## Adding your plugin to the community plugin list
+If this plugin has improved your Obsidian workflow, saved you time, or you just want to support its continued development, please consider donating! 
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+Your support is incredibly appreciated, helps fix bugs, and keeps this project alive and growing. 🙏
 
-## How to use
+https://buymeacoffee.com/endofday
 
-- Clone this repo.
-- Make sure your NodeJS is at least v18 (`node --version`).
-- `npm i` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
-
-## Manually installing the plugin
-
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
-
-## Improve code quality with eslint
-
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code.
-- This project already has eslint preconfigured, you can invoke a check by running`npm run lint`
-- Together with a custom eslint [plugin](https://github.com/obsidianmd/eslint-plugin) for Obsidan specific code guidelines.
-- A GitHub action is preconfigured to automatically lint every commit on all branches.
-
-## Funding URL
-
-You can include funding URLs where people who use your plugin can financially support it.
-
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
-
-```json
-{
-	"fundingUrl": "https://buymeacoffee.com"
-}
-```
-
-If you have multiple URLs, you can also do:
-
-```json
-{
-	"fundingUrl": {
-		"Buy Me a Coffee": "https://buymeacoffee.com",
-		"GitHub Sponsor": "https://github.com/sponsors",
-		"Patreon": "https://www.patreon.com/"
-	}
-}
-```
-
-## API Documentation
-
-See https://docs.obsidian.md
+<a href="https://www.buymeacoffee.com/endofday" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+---
+**Built with ❤️ for the Obsidian Community**
