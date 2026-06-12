@@ -2033,35 +2033,161 @@ class BookshelfSettingTab extends PluginSettingTab {
         container.empty();
         container.createEl("p", { text: "Loading instructions..." });
 
-        const files = [
-            "how_to_setup_libraries.md",
-            "how_to_use_bookshelf_view.md",
-            "how_to_manage_metadata_and_covers.md",
-            "how_to_use_force_rename.md"
-        ];
+        let fileContents = [
+            {
+                title: "How to Setup Libraries",
+                text: `1. Open Obsidian **Settings** (gear icon).
+2. Scroll down to **Community Plugins** and click on **Shiori Bookshelf**.
+3. Locate the **Series Libraries** and **Single Libraries** text boxes.
+4. Type or paste the exact paths to your folders, **one folder per line**. 
+   - *Example:*
+     \`\`\`
+     Libraries/Manga
+     Libraries/Comics
+     \`\`\`
+5. The plugin automatically saves your changes as you type.
 
-        let fileContents = [];
-        try {
-            const adapter = this.app.vault.adapter;
-            const pluginDir = this.plugin.manifest.dir; // e.g. .obsidian/plugins/obsidian-plugins-shiori-bookshelf
-            for (let file of files) {
-                let filePath = pluginDir + "/" + file;
-                try {
-                    let text = await adapter.read(filePath);
-                    let title = file.replace(/_/g, " ").replace(".md", "");
-                    let firstLineMatch = text.match(/^#\s+(.*)/m);
-                    if (firstLineMatch) {
-                        title = firstLineMatch[1];
-                        text = text.replace(/^#\s+.*\n/, '');
-                    }
-                    fileContents.push({ title, text });
-                } catch (e) {
-                    console.error("Could not read", filePath, e);
-                }
+*(Imagine screenshot here: The settings page showing the text areas for Series and Single libraries)*
+
+## Ignoring Folders
+
+If you have specific subfolders inside your libraries that you do not want to be scanned (e.g., a folder containing assets or templates), you can add them to the ignore list.
+
+1. Open the Shiori Bookshelf **Settings**.
+2. Scroll down to **Ignore Folders**.
+3. Enter a comma-separated list of folder names to ignore. By default, \`_ignore\` is already added.
+4. Any folder with this exact name will be completely skipped during the scanning process.`
+            },
+            {
+                title: "How to Use the Bookshelf View",
+                text: `The Bookshelf View is the core feature of the Shiori Bookshelf plugin, providing a beautiful, gallery-style interface to browse and manage your digital library.
+
+## Opening the Bookshelf
+
+There are two ways to open the Shiori Bookshelf:
+
+1. **Via the Ribbon Icon:** Click the library icon (looks like a folder/books) in the left sidebar ribbon of Obsidian.
+2. **Via the Command Palette:** Press \`Ctrl+P\` (or \`Cmd+P\` on Mac), search for "Open Shiori Bookshelf", and press Enter.
+
+## Setting the Bookshelf as Your Homepage
+
+If you want the Bookshelf to be the first thing you see when you open Obsidian:
+
+1. Open Obsidian **Settings** -> **Shiori Bookshelf**.
+2. Toggle on **"Set Shiori Bookshelf as Homepage"**.
+3. Now, whenever you launch Obsidian, the Bookshelf view will automatically open and pin itself to your workspace.
+
+## Browsing and Navigation
+
+- **Main View:** Displays all your Series and Single books as large cover cards.
+- **Series Sorting:** By default, Series are sorted by "Last Update" (the series containing the most recently added book appears first). 
+- **Lazy Loading:** The bookshelf loads 50 items at a time to keep Obsidian running smoothly. Simply scroll to the bottom of the page to load the next 50 items automatically.
+- **Opening a Series:** Click on any Series card to open the **Series Details** view. This view will list all the books contained within that specific series.
+- **Opening a Book:** Click on any book card (either in the main view or inside a series) to open the actual PDF, EPUB, or CBZ file in a new Obsidian tab for reading.
+
+*(Imagine screenshot here: The main Bookshelf grid view with cover images)*
+
+## Searching and Filtering
+
+At the top of the Bookshelf view, you will find a sticky search bar to quickly locate your books.
+
+- **Title / File Name:** Type in the first search box to instantly filter books and series by their title or file name.
+- **Writer:** Type in the second search box to filter by the author/writer. (Note: The writer information must be filled out in the book's metadata file for this to work).
+- **Status Filter:** Use the dropdown menu to filter books by their reading status:
+  - **All:** Shows everything.
+  - **Read:** Shows only books you have marked as finished.
+  - **Unread:** Shows new, unread books.
+  - **Reading:** Shows books you are currently in the middle of reading.
+
+*(Imagine screenshot here: The top search and filter bar of the Bookshelf)*`
+            },
+            {
+                title: "How to Manage Metadata and Covers",
+                text: `Shiori Bookshelf relies on two "companion" files for every book to make the library function perfectly: a Cover Image and a Metadata file.
+
+## 1. Automated Cover Extraction
+
+When you add a new PDF, EPUB, or CBZ file to a folder that is part of your library, the plugin will automatically attempt to extract its cover.
+
+- The extracted cover is saved in the exact same folder as the book.
+- It is named \`[Book Name]_cover.jpg\`.
+- This image is what you see in the beautiful Bookshelf gallery view.
+
+### Manual Scanning
+Sometimes you might add hundreds of books at once, or a cover extraction might fail. You can manually force the plugin to scan a folder and extract any missing covers:
+
+1. Right-click on the folder in the Obsidian file explorer.
+2. Select **Scan**.
+3. A notice will appear in the top right corner indicating how many missing covers were successfully extracted.
+
+*(Imagine screenshot here: Right-clicking a library folder and selecting "Scan")*
+
+## 2. The Metadata File
+
+To keep track of details like the author and whether you have finished reading a book, the plugin creates a companion markdown (\`.md\`) file.
+
+- It is named exactly the same as your book (e.g., \`MyBook.pdf\` will have a metadata file called \`MyBook.md\`).
+- This file contains YAML frontmatter where the data is stored.
+
+### Editing Metadata
+You can edit this data directly from the Bookshelf View using the dropdowns and inputs below the cover, OR you can manually edit the file.
+
+To quickly open a book's metadata file:
+1. Right-click on the book file (e.g., the PDF or EPUB) in the Obsidian file explorer.
+2. Click **Open Metadata file**.
+3. The \`.md\` file will open in a new tab, allowing you to edit properties like \`writer\`, \`status\`, and \`title\`.
+
+*(Imagine screenshot here: Right-clicking a PDF and selecting "Open Metadata file")*
+
+## 3. Hiding Companion Files
+
+Having a \`_cover.jpg\` and a \`.md\` file for every single book can quickly clutter your Obsidian file explorer. You can hide them to keep your workspace clean!
+
+1. Open Obsidian **Settings** -> **Shiori Bookshelf**.
+2. Toggle on **"Hide cover images in file explorer"**.
+3. Toggle on **"Hide book metadata files"**.
+
+Once enabled, these files will become completely invisible in the left sidebar, but they will still exist and power your library perfectly in the background.`
+            },
+            {
+                title: "How to Use Force Rename",
+                text: `Obsidian has strict rules about file naming. It prevents you from using characters like \`#\`, \`^\`, \`[\`, \`]\`, and \`|\` because these characters can break Markdown linking. 
+
+However, when managing a library of PDFs or comic books, you might *want* these characters in your file names (for example, \`[Group] Manga Title v01.cbz\`). 
+
+Shiori Bookshelf provides a "Force Rename" feature that bypasses Obsidian's restrictions specifically for your library files.
+
+## Enabling Force Rename
+
+1. Open Obsidian **Settings** -> **Shiori Bookshelf**.
+2. Toggle on **"Enable Force Rename"**.
+
+*Warning: Renaming a file with restricted characters means you will not be able to easily link to it from other markdown notes using \`[[Link]]\`. This feature is designed specifically for library files that you do not intend to cross-link.*
+
+## Using Force Rename
+
+1. In the Obsidian file explorer, **Right-click** on the folder or file you want to rename.
+2. At the bottom of the context menu, just above Obsidian's default "Rename..." option, click on **Force Rename...**.
+3. A popup window will appear with text boxes.
+
+### Renaming a Folder
+If you right-clicked a folder, you will see a single long text box.
+- Simply type the new name, including any special characters you want (e.g., \`[TranslationGroup] Series Name\`).
+- Press \`Enter\` or click the **Force Rename** button.
+
+### Renaming a File
+If you right-clicked a file (like a \`.pdf\` or \`.cbz\`), you will see **two text boxes** separated by a dot (\`.\`).
+- **Left Box:** This is the name of the file. Type your new name here.
+- **Right Box:** This is the file extension (e.g., \`pdf\`, \`cbz\`). It is usually best to leave this alone unless you need to fix a broken extension.
+- Press \`Enter\` from either box, or click the **Force Rename** button.
+
+*(Imagine screenshot here: The Force Rename popup showing the two text boxes for file name and extension)*
+
+## Automated Syncing
+
+When you use Force Rename on a book file, the plugin does more than just rename the PDF/CBZ! It automatically finds the associated \`_cover.jpg\` and \`.md\` metadata files and renames them to match the new file name exactly. This ensures your Bookshelf gallery never breaks.`
             }
-        } catch (e) {
-            console.error("HowTo render error:", e);
-        }
+        ];
 
         container.empty();
         const { MarkdownRenderer } = require('obsidian');
