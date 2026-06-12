@@ -91,6 +91,11 @@ For detailed, step-by-step instructions on how to use specific features, please 
 - **Smart Cover Extraction**: The regular cover extraction logic is now smarter! If you trigger a "Regenerate Cover" and a cover image already exists in the folder, it will instantly link it to the book's metadata without redundantly re-extracting it from the archive, saving significant time.
 - **Faster PDF Cover Extraction**: Massively improved the performance of extracting covers from PDF files. Instead of loading the entire PDF file into memory, Shiori Bookshelf now efficiently streams only the required data chunks needed to render the very first page via HTTP Range Requests, saving a huge amount of memory and time.
 
+### v1.0.6 (Hotfix)
+- **API Compatibility Fix**: Resolved a critical bug where users on Obsidian versions prior to 1.4.0 would experience silent failures during cover extraction due to the missing `processFrontMatter` API. Added robust fallbacks for legacy versions.
+- **Progress UI Fix**: Fixed a crash caused by the new progress notice on older Obsidian versions lacking the `setMessage` function.
+- **PDF Extraction Fix**: Fixed an issue where PDF cover extraction would fail and return 0 covers if the user had not explicitly opened a PDF document in their current session, by dynamically pre-loading Obsidian's built-in PDF.js library.
+
 ## ❤️ Support & Donate
 
 If this plugin has improved your Obsidian workflow, saved you time, or you just want to support its continued development, please consider donating! 

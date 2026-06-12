@@ -3286,14 +3286,28 @@ class BookshelfPlugin extends Plugin {
     }
 
     async extractPdfCover(file) {
+        if (!window.pdfjsLib && typeof loadPdfJs === "function") {
+            try {
+                await loadPdfJs();
+            } catch (e) {
+                console.error("Failed to load PDF.js", e);
+            }
+        }
         if (!window.pdfjsLib) return null;
         try {
             const url = this.app.vault.adapter.getResourcePath(file.path);
-            const pdf = await window.pdfjsLib.getDocument({
-                url: url,
-                disableAutoFetch: true,
-                disableStream: false
-            }).promise;
+            let pdf;
+            try {
+                pdf = await window.pdfjsLib.getDocument({
+                    url: url,
+                    disableAutoFetch: true,
+                    disableStream: false
+                }).promise;
+            } catch (urlError) {
+                console.warn("PDF URL fetch failed, falling back to readBinary", urlError);
+                const data = await this.app.vault.readBinary(file);
+                pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(data) }).promise;
+            }
             const page = await pdf.getPage(1);
             
             const viewport = page.getViewport({ scale: 1.0 });
@@ -3538,9 +3552,22 @@ class BookshelfPlugin extends Plugin {
                     if (!mdFile) {
                         await this.app.vault.create(mdPath, `---\ncover: "${existingFileName}"\n---\n\n[[${bookFile.name}]]\n`);
                     } else {
-                        await this.app.fileManager.processFrontMatter(mdFile, (frontmatter) => {
-                            if (!frontmatter.cover) frontmatter.cover = existingFileName;
-                        });
+                        if (typeof this.app.fileManager.processFrontMatter === 'function') {
+                            await this.app.fileManager.processFrontMatter(mdFile, (frontmatter) => {
+                                if (!frontmatter.cover) frontmatter.cover = existingFileName;
+                            });
+                        } else {
+                            let content = await this.app.vault.read(mdFile);
+                            if (content.startsWith("---\n")) {
+                                if (!content.includes('cover:')) {
+                                    content = content.replace(/^---\n/, `---\ncover: "${existingFileName}"\n`);
+                                    await this.app.vault.modify(mdFile, content);
+                                }
+                            } else {
+                                content = `---\ncover: "${existingFileName}"\n---\n` + content;
+                                await this.app.vault.modify(mdFile, content);
+                            }
+                        }
                     }
                     return false;
                 }
@@ -3583,9 +3610,23 @@ class BookshelfPlugin extends Plugin {
             if (!mdFile) {
                 await this.app.vault.create(mdPath, `---\ncover: "${coverFileName}"\n---\n\n[[${bookFile.name}]]\n`);
             } else {
-                await this.app.fileManager.processFrontMatter(mdFile, (frontmatter) => {
-                    frontmatter.cover = coverFileName;
-                });
+                if (typeof this.app.fileManager.processFrontMatter === 'function') {
+                    await this.app.fileManager.processFrontMatter(mdFile, (frontmatter) => {
+                        frontmatter.cover = coverFileName;
+                    });
+                } else {
+                    let content = await this.app.vault.read(mdFile);
+                    if (content.startsWith("---\n")) {
+                        if (content.includes('cover:')) {
+                            content = content.replace(/cover:.*?\n/, `cover: "${coverFileName}"\n`);
+                        } else {
+                            content = content.replace(/^---\n/, `---\ncover: "${coverFileName}"\n`);
+                        }
+                    } else {
+                        content = `---\ncover: "${coverFileName}"\n---\n` + content;
+                    }
+                    await this.app.vault.modify(mdFile, content);
+                }
             }
             return true;
         }
@@ -3604,7 +3645,13 @@ class BookshelfPlugin extends Plugin {
             let book = allBooks[i];
             
             if (i % 20 === 0) {
-                progressNotice.setMessage(`Scanning ${i}/${total} books...\nExtracted: ${extractedCount}`);
+                let msg = `Scanning ${i}/${total} books...\nExtracted: ${extractedCount}`;
+                if (typeof progressNotice.setMessage === 'function') {
+                    progressNotice.setMessage(msg);
+                } else {
+                    progressNotice.hide();
+                    progressNotice = new Notice(msg, 0);
+                }
                 await new Promise(r => setTimeout(r, 1));
             }
             
@@ -3617,14 +3664,20 @@ class BookshelfPlugin extends Plugin {
             let success = await this.extractCover(book.file);
             if (success) {
                 extractedCount++;
-                progressNotice.setMessage(`Scanning ${i + 1}/${total} books...\nExtracted: ${extractedCount}`);
+                let msg = `Scanning ${i + 1}/${total} books...\nExtracted: ${extractedCount}`;
+                if (typeof progressNotice.setMessage === 'function') {
+                    progressNotice.setMessage(msg);
+                } else {
+                    progressNotice.hide();
+                    progressNotice = new Notice(msg, 0);
+                }
             }
         }
         
         progressNotice.hide();
         new Notice(`Finished scanning. Extracted ${extractedCount} covers out of ${total} books!`);
         
-        const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_BOOKSHELF);
+        const leaves = this.app.workspace.getLeavesOfType("bookshelf-view");
         if (leaves.length > 0) {
             leaves[0].view.renderBookshelf();
         }
@@ -3639,7 +3692,13 @@ class BookshelfPlugin extends Plugin {
             let book = series.books[i];
             
             if (i % 20 === 0) {
-                progressNotice.setMessage(`Scanning ${i}/${total} books in ${series.name}...\nExtracted: ${extractedCount}`);
+                let msg = `Scanning ${i}/${total} books in ${series.name}...\nExtracted: ${extractedCount}`;
+                if (typeof progressNotice.setMessage === 'function') {
+                    progressNotice.setMessage(msg);
+                } else {
+                    progressNotice.hide();
+                    progressNotice = new Notice(msg, 0);
+                }
                 await new Promise(r => setTimeout(r, 1));
             }
             
@@ -3652,18 +3711,24 @@ class BookshelfPlugin extends Plugin {
             let success = await this.extractCover(book.file);
             if (success) {
                 extractedCount++;
-                progressNotice.setMessage(`Scanning ${i + 1}/${total} books in ${series.name}...\nExtracted: ${extractedCount}`);
+                let msg = `Scanning ${i + 1}/${total} books in ${series.name}...\nExtracted: ${extractedCount}`;
+                if (typeof progressNotice.setMessage === 'function') {
+                    progressNotice.setMessage(msg);
+                } else {
+                    progressNotice.hide();
+                    progressNotice = new Notice(msg, 0);
+                }
             }
         }
         
         progressNotice.hide();
         new Notice(`Finished scanning. Extracted ${extractedCount} covers for ${series.name}!`);
         
-        const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_BOOKSHELF);
+        const leaves = this.app.workspace.getLeavesOfType("bookshelf-view");
         if (leaves.length > 0) {
             leaves[0].view.renderBookshelf();
         }
-        const detailsLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_SERIES_DETAILS);
+        const detailsLeaves = this.app.workspace.getLeavesOfType("series-details-view");
         detailsLeaves.forEach(leaf => {
             if (leaf.view.seriesId === series.id) {
                 leaf.view.renderDetails();
@@ -3683,7 +3748,13 @@ class BookshelfPlugin extends Plugin {
             let book = allBooks[i];
             
             if (i % 20 === 0) {
-                progressNotice.setMessage(`Scanning ${i}/${total} books in ${folder.name}...\nExtracted: ${extractedCount}`);
+                let msg = `Scanning ${i}/${total} books in ${folder.name}...\nExtracted: ${extractedCount}`;
+                if (typeof progressNotice.setMessage === 'function') {
+                    progressNotice.setMessage(msg);
+                } else {
+                    progressNotice.hide();
+                    progressNotice = new Notice(msg, 0);
+                }
                 await new Promise(r => setTimeout(r, 1));
             }
             
@@ -3698,7 +3769,13 @@ class BookshelfPlugin extends Plugin {
             let success = await this.extractCover(book.file, force);
             if (success) {
                 extractedCount++;
-                progressNotice.setMessage(`Scanning ${i + 1}/${total} books in ${folder.name}...\nExtracted: ${extractedCount}`);
+                let msg = `Scanning ${i + 1}/${total} books in ${folder.name}...\nExtracted: ${extractedCount}`;
+                if (typeof progressNotice.setMessage === 'function') {
+                    progressNotice.setMessage(msg);
+                } else {
+                    progressNotice.hide();
+                    progressNotice = new Notice(msg, 0);
+                }
             }
         }
         
