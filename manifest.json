@@ -1,7 +1,7 @@
 {
 	"id": "shiori-bookshelf",
 	"name": "Shiori Bookshelf",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"minAppVersion": "1.0.0",
 	"description": "A visual bookshelf to manage, organize, and read your manga, light novels, and ebooks directly within your vault, featuring automatic cover extraction and external reader support.",
 	"author": "usero2-endofday",

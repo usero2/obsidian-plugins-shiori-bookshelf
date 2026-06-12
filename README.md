@@ -55,6 +55,14 @@ For detailed, step-by-step instructions on how to use specific features, please 
 - **✨ Gemini Auto Fill:** Added an "Auto Fill" button to the Edit Metadata window. You can now automatically fetch and fill series metadata (including Japanese/English/Romaji aliases, summary, writers, publisher, genres, tags, and age rating) using Google's Gemini AI. 
 - **Gemini Settings:** Added settings for "Gemini API Key" and "Gemini Model" to support the new Auto Fill feature.
 
+### v1.0.2
+- **Unified Context Menu:** The right-click context menu (Open in new window, Force Rename, Delete, etc.) is now available across all view modes (Card, Thumbnail, List, and Detail View).
+- **Advance Filters:** Added a new "Advance Filter" toggle in the home bookshelf to easily show/hide filter categories.
+- **Library Filtering:** Added the ability to filter series by "Libraries" (your setup folders) alongside Genres and Tags.
+- **Improved Filter Organization:** Filter sections are now reordered to Libraries, Genres, and Tags, and are expanded by default when you click the Advance Filter button.
+- **Reset Filters Button:** Added a convenient "Reset Filters" button to instantly clear all selected filters across all categories.
+- **Thumbnail Zoom:** Added zoom controls (`-`, `reset`, `+`) for the Thumbnail view, allowing you to easily resize book covers.
+
 ## ❤️ Support & Donate
 
 If this plugin has improved your Obsidian workflow, saved you time, or you just want to support its continued development, please consider donating! 

@@ -81,11 +81,157 @@ function openBook(plugin, bookFile) {
     const ext = bookFile.extension ? bookFile.extension.toLowerCase() : "";
     const viewType = plugin.app.viewRegistry ? plugin.app.viewRegistry.getTypeByExtension(ext) : null;
     
-    if (viewType === VIEW_TYPE_DUMMY_EXT || ["cbz", "cbr", "mobi", "zip"].includes(ext)) {
-        plugin.app.openWithDefaultApp(bookFile.path);
-    } else {
+    if (viewType && viewType !== VIEW_TYPE_DUMMY_EXT) {
         plugin.app.workspace.getLeaf(false).openFile(bookFile);
+    } else {
+        plugin.app.openWithDefaultApp(bookFile.path);
     }
+}
+
+function attachBookContextMenu(element, book, plugin) {
+    element.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        const { Menu, Notice, Modal } = require("obsidian");
+        const menu = new Menu();
+        
+        menu.addItem((item) => {
+            item.setTitle("Open in new windows")
+                .setIcon("popup-open")
+                .onClick(() => {
+                    plugin.app.workspace.getLeaf('window').openFile(book.file);
+                });
+        });
+        
+        menu.addSeparator();
+        
+        menu.addItem((item) => {
+            item.setTitle("Copy path");
+            item.setIcon("link");
+            if (item.setSubmenu) {
+                const sub = item.setSubmenu();
+                sub.addItem((s) => s.setTitle("as Obsidian URL").onClick(() => {
+                    const url = `obsidian://open?vault=${encodeURIComponent(plugin.app.vault.getName())}&file=${encodeURIComponent(book.file.path)}`;
+                    navigator.clipboard.writeText(url);
+                    new Notice("Obsidian URL copied");
+                }));
+                sub.addItem((s) => s.setTitle("from vault folder").onClick(() => {
+                    navigator.clipboard.writeText(book.file.path);
+                    new Notice("Vault path copied");
+                }));
+                sub.addItem((s) => s.setTitle("from system root").onClick(() => {
+                    const absPath = plugin.app.vault.adapter.getBasePath() + "/" + book.file.path;
+                    navigator.clipboard.writeText(absPath.replace(/\\/g, '/'));
+                    new Notice("System root path copied");
+                }));
+            }
+        });
+        
+        menu.addSeparator();
+        
+        menu.addItem((item) => {
+            item.setTitle("Open in default app")
+                .setIcon("popup-open")
+                .onClick(() => {
+                    plugin.app.openWithDefaultApp(book.file.path);
+                });
+        });
+        
+        menu.addItem((item) => {
+            item.setTitle("Show in system explorer")
+                .setIcon("folder")
+                .onClick(() => {
+                    plugin.app.showInFolder(book.file.path);
+                });
+        });
+        
+        menu.addItem((item) => {
+            item.setTitle("Reveal file in navigation")
+                .setIcon("folder")
+                .onClick(() => {
+                    const fileExplorer = plugin.app.internalPlugins.getPluginById("file-explorer");
+                    if (fileExplorer && fileExplorer.instance) {
+                        fileExplorer.instance.revealInFolder(book.file);
+                    }
+                });
+        });
+        
+        menu.addSeparator();
+        
+        menu.addItem((item) => {
+            item.setTitle("Regenerate Cover")
+                .setIcon("image-file")
+                .onClick(async () => {
+                    new Notice("Regenerating cover for " + book.file.name + "...");
+                    try {
+                        await plugin.extractCover(book.file);
+                        new Notice("Cover regenerated!");
+                    } catch(e) {
+                        new Notice("Failed: " + e.message);
+                    }
+                    const bsLeaves = plugin.app.workspace.getLeavesOfType("bookshelf-view");
+                    bsLeaves.forEach(l => l.view.renderBookshelf());
+                    const sdLeaves = plugin.app.workspace.getLeavesOfType("series-details-view");
+                    sdLeaves.forEach(l => l.view.renderDetails());
+                });
+        });
+        
+        menu.addItem((item) => {
+            item.setTitle("Open Metadata file")
+                .setIcon("file-text")
+                .onClick(async () => {
+                    let mdFile = plugin.app.vault.getAbstractFileByPath(book.metadataFile);
+                    if (mdFile instanceof require('obsidian').TFile) {
+                        plugin.app.workspace.getLeaf(false).openFile(mdFile);
+                    } else {
+                        new Notice("Metadata file not found.");
+                    }
+                });
+        });
+        
+        menu.addItem((item) => {
+            item.setTitle("Force Rename...")
+                .setIcon("pencil")
+                .onClick(() => {
+                    new ForceRenameModal(plugin.app, book.file, plugin).open();
+                });
+        });
+        
+        menu.addSeparator();
+        
+        menu.addItem((item) => {
+            item.setTitle("Rename...")
+                .setIcon("pencil")
+                .onClick(() => {
+                    new BasicRenameModal(plugin.app, book.file, plugin).open();
+                });
+        });
+        
+        menu.addItem((item) => {
+            item.setTitle("Delete")
+                .setIcon("trash")
+                .onClick(async () => {
+                    const confirm = new Modal(plugin.app);
+                    confirm.contentEl.createEl("h3", { text: `Delete ${book.basename}?` });
+                    const btnRow = confirm.contentEl.createDiv({ cls: "modal-button-container" });
+                    btnRow.style.display = "flex"; btnRow.style.gap = "10px"; btnRow.style.marginTop = "20px";
+                    const cancelBtn = btnRow.createEl("button", { text: "Cancel" });
+                    cancelBtn.onclick = () => confirm.close();
+                    const delBtn = btnRow.createEl("button", { text: "Delete", cls: "mod-warning" });
+                    delBtn.onclick = async () => {
+                        await plugin.app.fileManager.trashFile(book.file);
+                        new Notice(book.file.name + " deleted.");
+                        confirm.close();
+                        const bsLeaves = plugin.app.workspace.getLeavesOfType("bookshelf-view");
+                        bsLeaves.forEach(l => l.view.renderBookshelf());
+                        const sdLeaves = plugin.app.workspace.getLeavesOfType("series-details-view");
+                        sdLeaves.forEach(l => l.view.renderDetails());
+                    };
+                    confirm.open();
+                });
+        });
+        
+        menu.showAtMouseEvent(ev);
+    });
 }
 
 function renderBooks(grid, books, plugin) {
@@ -156,8 +302,53 @@ function renderBooks(grid, books, plugin) {
         card.onclick = () => {
             openBook(plugin, book.file);
         };
+        
+        attachBookContextMenu(card, book, plugin);
     }
 }
+class BasicRenameModal extends Modal {
+    constructor(app, targetFile, plugin) {
+        super(app);
+        this.targetFile = targetFile;
+        this.plugin = plugin;
+    }
+    onOpen() {
+        const {contentEl} = this;
+        contentEl.empty();
+        contentEl.createEl("h2", { text: `Rename` });
+        const input = contentEl.createEl("input", { type: "text", value: this.targetFile.basename });
+        input.style.width = "100%";
+        input.style.marginBottom = "15px";
+        const btnRow = contentEl.createDiv();
+        btnRow.style.cssText = "display:flex; justify-content:flex-end; gap:10px;";
+        const cancelBtn = btnRow.createEl("button", { text: "Cancel" });
+        cancelBtn.onclick = () => this.close();
+        const renameBtn = btnRow.createEl("button", { text: "Rename", cls: "mod-cta" });
+        
+        const doRename = async () => {
+            if (input.value && input.value !== this.targetFile.basename) {
+                try {
+                    let newPath = "";
+                    if (this.targetFile.parent.path === "/") newPath = input.value + "." + this.targetFile.extension;
+                    else newPath = this.targetFile.parent.path + "/" + input.value + "." + this.targetFile.extension;
+                    await this.plugin.app.fileManager.renameFile(this.targetFile, newPath);
+                    new (require("obsidian").Notice)("Renamed to " + input.value);
+                } catch(e) {
+                    new (require("obsidian").Notice)("Failed to rename: " + e.message);
+                }
+            }
+            this.close();
+            const bsLeaves = this.plugin.app.workspace.getLeavesOfType("bookshelf-view");
+            bsLeaves.forEach(l => l.view.renderBookshelf());
+            const sdLeaves = this.plugin.app.workspace.getLeavesOfType("series-details-view");
+            sdLeaves.forEach(l => l.view.renderDetails());
+        };
+        renameBtn.onclick = doRename;
+        input.addEventListener("keydown", (e) => { if(e.key==="Enter") doRename(); });
+    }
+    onClose() { this.contentEl.empty(); }
+}
+
 class ForceRenameModal extends Modal {
     constructor(app, targetFile, plugin) {
         super(app);
@@ -982,11 +1173,33 @@ class SeriesDetailsView extends ItemView {
                 btn.style.background = "var(--interactive-accent)";
                 this.plugin.settings.seriesViewMode = currentViewMode;
                 await this.plugin.saveSettings();
+                zoomBtns.style.display = currentViewMode === "thumbnail" ? "flex" : "none";
                 renderContent();
             };
             btnMap[m.id] = btn;
         });
         btnMap[currentViewMode].style.background = "var(--interactive-accent)";
+
+        const zoomBtns = controls.createDiv();
+        zoomBtns.style.cssText = "display:none;gap:2px;margin-left:8px;";
+        let currentThumbSize = this.plugin.settings.thumbnailSize || 100;
+        
+        const btnMinus = zoomBtns.createEl("button", { text: "-" });
+        const btnReset = zoomBtns.createEl("button", { text: "reset" });
+        const btnPlus = zoomBtns.createEl("button", { text: "+" });
+        [btnMinus, btnReset, btnPlus].forEach(b => {
+            b.style.cssText = btnBase + "background:var(--background-secondary);color:var(--text-normal);padding:4px 6px;font-size:12px;";
+        });
+        
+        const saveZoom = async () => {
+            this.plugin.settings.thumbnailSize = currentThumbSize;
+            await this.plugin.saveSettings();
+            renderContent();
+        };
+        btnMinus.onclick = () => { currentThumbSize = Math.max(50, currentThumbSize - 20); saveZoom(); };
+        btnReset.onclick = () => { currentThumbSize = 100; saveZoom(); };
+        btnPlus.onclick = () => { currentThumbSize = Math.min(300, currentThumbSize + 20); saveZoom(); };
+        zoomBtns.style.display = currentViewMode === "thumbnail" ? "flex" : "none";
 
         // ── Content area ────────────────────────────────────────────
         const content = container.createDiv();
@@ -1015,7 +1228,7 @@ class SeriesDetailsView extends ItemView {
         // ── Thumbnail ───────────────────────────────────────────────
         const renderThumbnailView = (wrap, books) => {
             const grid = wrap.createDiv();
-            grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:10px;";
+            grid.style.cssText = `display:grid;grid-template-columns:repeat(auto-fill,minmax(${currentThumbSize}px,1fr));gap:10px;`;
             books.forEach(book => {
                 const card = grid.createDiv();
                 card.style.cssText = "cursor:pointer;border-radius:6px;overflow:hidden;transition:transform .2s;";
@@ -1028,6 +1241,7 @@ class SeriesDetailsView extends ItemView {
                 if (url) { const i = img.createEl("img"); i.src = url; i.style.cssText = "width:100%;height:100%;object-fit:cover;"; }
                 else img.createEl("span", { text: book.extension.toUpperCase() }).style.cssText = "font-weight:bold;color:var(--text-muted);font-size:11px;";
                 card.onclick = () => openBook(plugin, book.file);
+                attachBookContextMenu(card, book, plugin);
             });
         };
 
@@ -1074,6 +1288,7 @@ class SeriesDetailsView extends ItemView {
 
                 rightContainer.createEl("span", { text: book.extension.toUpperCase() }).style.cssText = "font-size:10px;padding:2px 6px;border-radius:4px;background:var(--background-modifier-border);color:var(--text-faint);";
                 row.onclick = () => openBook(plugin, book.file);
+                attachBookContextMenu(row, book, plugin);
             });
         };
 
@@ -1104,6 +1319,7 @@ class SeriesDetailsView extends ItemView {
                 }
                 info.createEl("span", { text: book.extension.toUpperCase() }).style.cssText = "margin-top:auto;align-self:flex-start;font-size:10px;padding:2px 6px;border-radius:4px;background:var(--background-modifier-border);color:var(--text-faint);";
                 card.onclick = () => openBook(plugin, book.file);
+                attachBookContextMenu(card, book, plugin);
             });
         };
 
@@ -1256,6 +1472,9 @@ class BookshelfView extends ItemView {
         statuses.forEach(s => statusSelect.createEl("option", { value: s === "Any Status" ? "" : s, text: s }));
 
 
+        const advFilterBtn = searchContainer.createEl("button", { text: "Advance Filter", cls: "bookshelf-btn" });
+        advFilterBtn.style.marginRight = "8px";
+
         const extractBtn = searchContainer.createEl("button", { text: "Scan All", cls: "bookshelf-btn mod-cta" });
         extractBtn.title = "Automatically extract covers for PDF and EPUB files that don't have one.";
         extractBtn.onclick = async () => {
@@ -1268,7 +1487,9 @@ class BookshelfView extends ItemView {
 
         let allGenres = new Set();
         let allTags = new Set();
+        let allLibraries = new Set();
         data.series.forEach(s => {
+            if (s.library) allLibraries.add(s.library);
             if (s.metadata) {
                 let g1 = s.metadata.genres;
                 if (Array.isArray(g1)) g1.forEach(x => allGenres.add(String(x).trim()));
@@ -1291,17 +1512,21 @@ class BookshelfView extends ItemView {
         allTags.delete("");
         let sortedGenres = Array.from(allGenres).sort((a,b) => a.localeCompare(b));
         let sortedTags = Array.from(allTags).sort((a,b) => a.localeCompare(b));
+        let sortedLibraries = Array.from(allLibraries).sort((a,b) => a.localeCompare(b));
         
         let includeGenres = new Set();
         let excludeGenres = new Set();
         let includeTags = new Set();
         let excludeTags = new Set();
+        let includeLibraries = new Set();
+        let excludeLibraries = new Set();
         
         let applyFilters = null; // Will be defined below
+        let updateAllPills = [];
         
-        const createFilterSection = (title, items, includeSet, excludeSet, addHr = true) => {
+        const createFilterSection = (title, items, includeSet, excludeSet, addHr = true, parent = container) => {
             if (items.length === 0) return;
-            const section = container.createDiv();
+            const section = parent.createDiv();
             if (addHr) {
                 section.style.cssText = "margin-bottom: 20px; padding-bottom: 15px;";
             } else {
@@ -1312,13 +1537,13 @@ class BookshelfView extends ItemView {
             headerRow.style.cssText = "display:flex; align-items:center; gap:10px; margin-bottom:10px;";
             headerRow.createEl("h4", { text: title }).style.cssText = "margin:0; color:var(--text-muted); font-size:14px; font-weight:bold;";
             
-            const toggleBtn = headerRow.createEl("button", { text: "Show" });
+            const toggleBtn = headerRow.createEl("button", { text: "Hide" });
             toggleBtn.style.cssText = "background:transparent; border:none; box-shadow:none; color:var(--text-accent); font-size:12px; cursor:pointer; padding:0;";
             
             const list = section.createDiv();
-            list.style.cssText = "display:none; flex-wrap:wrap; gap:8px;";
+            list.style.cssText = "display:flex; flex-wrap:wrap; gap:8px;";
             
-            let isVisible = false;
+            let isVisible = true;
             toggleBtn.onclick = () => {
                 isVisible = !isVisible;
                 list.style.display = isVisible ? "flex" : "none";
@@ -1339,6 +1564,7 @@ class BookshelfView extends ItemView {
                     }
                 };
                 updatePillStyle();
+                updateAllPills.push(updatePillStyle);
                 
                 pill.onclick = () => {
                     if (!includeSet.has(item) && !excludeSet.has(item)) {
@@ -1356,8 +1582,30 @@ class BookshelfView extends ItemView {
             if (addHr) section.createEl("hr").style.margin = "15px 0 0 0";
         };
         
-        createFilterSection("Genre", sortedGenres, includeGenres, excludeGenres, false);
-        createFilterSection("Tags", sortedTags, includeTags, excludeTags, true);
+        const filtersContainer = container.createDiv();
+        filtersContainer.style.display = "none";
+        filtersContainer.style.marginBottom = "15px";
+        filtersContainer.style.position = "relative";
+
+        const resetAllBtn = filtersContainer.createEl("button", { text: "Reset Filters", cls: "bookshelf-btn" });
+        resetAllBtn.style.cssText = "position:absolute; right:0; top:0; font-size:12px; padding:4px 10px;";
+        resetAllBtn.onclick = () => {
+            includeLibraries.clear(); excludeLibraries.clear();
+            includeGenres.clear(); excludeGenres.clear();
+            includeTags.clear(); excludeTags.clear();
+            updateAllPills.forEach(fn => fn());
+            if (applyFilters) applyFilters();
+        };
+
+        let isAdvVisible = false;
+        advFilterBtn.onclick = () => {
+            isAdvVisible = !isAdvVisible;
+            filtersContainer.style.display = isAdvVisible ? "block" : "none";
+        };
+
+        createFilterSection("Libraries", sortedLibraries, includeLibraries, excludeLibraries, false, filtersContainer);
+        createFilterSection("Genres", sortedGenres, includeGenres, excludeGenres, false, filtersContainer);
+        createFilterSection("Tags", sortedTags, includeTags, excludeTags, true, filtersContainer);
 
         let recentContainer = null;
         if (data.recentlyAdded.length > 0) {
@@ -1529,7 +1777,7 @@ class BookshelfView extends ItemView {
             const terms = query.split(/\s+/).filter(t => t);
             const writerTerms = writerQuery.split(/\s+/).filter(t => t);
             
-            let isFiltering = query || writerQuery || statusQuery || includeGenres.size > 0 || excludeGenres.size > 0 || includeTags.size > 0 || excludeTags.size > 0;
+            let isFiltering = query || writerQuery || statusQuery || includeGenres.size > 0 || excludeGenres.size > 0 || includeTags.size > 0 || excludeTags.size > 0 || includeLibraries.size > 0 || excludeLibraries.size > 0;
             
             if (recentContainer) {
                 recentContainer.style.display = isFiltering ? "none" : "block";
@@ -1603,6 +1851,11 @@ class BookshelfView extends ItemView {
                             if (!sTags.includes(t.toLowerCase())) { match = false; break; }
                         }
                     }
+                }
+                
+                if (match && (includeLibraries.size > 0 || excludeLibraries.size > 0)) {
+                    if (excludeLibraries.has(s.library)) { match = false; }
+                    else if (includeLibraries.size > 0 && !includeLibraries.has(s.library)) { match = false; }
                 }
                 
                 if (match && query) {
@@ -1729,6 +1982,11 @@ class BookshelfView extends ItemView {
                         }
                     }
                     
+                    if (match && (includeLibraries.size > 0 || excludeLibraries.size > 0)) {
+                        if (excludeLibraries.has(s.library)) { match = false; }
+                        else if (includeLibraries.size > 0 && !includeLibraries.has(s.library)) { match = false; }
+                    }
+                    
                     if (!match) continue;
                     
                     for (let b of s.books) {
@@ -1784,28 +2042,26 @@ class BookshelfSettingTab extends PluginSettingTab {
 
         let fileContents = [];
         try {
-            const fs = require('fs');
-            const path = require('path');
-            let basePath = "";
-            if (this.app.vault.adapter.getBasePath) {
-                basePath = this.app.vault.adapter.getBasePath();
-            }
-            if (basePath) {
-                const pluginDir = path.join(basePath, this.plugin.manifest.dir);
-                for (let file of files) {
-                    try {
-                        let text = fs.readFileSync(path.join(pluginDir, file), "utf8");
-                        let title = file.replace(/_/g, " ").replace(".md", "");
-                        let firstLineMatch = text.match(/^#\s+(.*)/m);
-                        if (firstLineMatch) {
-                            title = firstLineMatch[1];
-                            text = text.replace(/^#\s+.*\n/, '');
-                        }
-                        fileContents.push({ title, text });
-                    } catch (e) {}
+            const adapter = this.app.vault.adapter;
+            const pluginDir = this.plugin.manifest.dir; // e.g. .obsidian/plugins/obsidian-plugins-shiori-bookshelf
+            for (let file of files) {
+                let filePath = pluginDir + "/" + file;
+                try {
+                    let text = await adapter.read(filePath);
+                    let title = file.replace(/_/g, " ").replace(".md", "");
+                    let firstLineMatch = text.match(/^#\s+(.*)/m);
+                    if (firstLineMatch) {
+                        title = firstLineMatch[1];
+                        text = text.replace(/^#\s+.*\n/, '');
+                    }
+                    fileContents.push({ title, text });
+                } catch (e) {
+                    console.error("Could not read", filePath, e);
                 }
             }
-        } catch (e) {}
+        } catch (e) {
+            console.error("HowTo render error:", e);
+        }
 
         container.empty();
         const { MarkdownRenderer } = require('obsidian');
@@ -1841,7 +2097,7 @@ class BookshelfSettingTab extends PluginSettingTab {
 
     async renderRecommendedTab(container) {
         container.empty();
-        const md = `> [!TIP]\n> **Recommended Plugin for EPUBs:** \n> Obsidian does not natively support reading \`.epub\` files. To read them directly inside Obsidian, we highly recommend using the **EPUB Reader with TTS** plugin.\n> - **Community Plugin:** [EPUB Reader with TTS](https://community.obsidian.md/plugins/epub-reader-with-tts)\n> - **GitHub:** [obsidian-plugins-epub-reader-with-tts](https://github.com/usero2/obsidian-plugins-epub-reader-with-tts)`;
+        const md = `> [!TIP]\n> **Recommended Plugin for EPUBs:** \n> Obsidian does not natively support reading \`.epub\` files. To read them directly inside Obsidian, we highly recommend using the **EPUB Reader with TTS** plugin.\n> - **Community Plugin:** [EPUB Reader with TTS](obsidian://show-plugin?id=epub-reader-with-tts)\n> - **GitHub:** [obsidian-plugins-epub-reader-with-tts](https://github.com/usero2/obsidian-plugins-epub-reader-with-tts)\n\n> [!TIP]\n> **Recommended Plugin for CBZs (Manga):** \n> Obsidian does not natively support reading \`.cbz\` or \`.cbr\` files. To read them directly inside Obsidian, we highly recommend using the **CBZ Reader** plugin.\n> - **Community Plugin:** [CBZ Reader](obsidian://show-plugin?id=cbz-reader)\n> - **GitHub:** [obsidian-plugins-cbz-reader](https://github.com/usero2/obsidian-plugins-cbz-reader)`;
         const { MarkdownRenderer } = require('obsidian');
         await MarkdownRenderer.renderMarkdown(md, container, '', this.plugin);
     }
