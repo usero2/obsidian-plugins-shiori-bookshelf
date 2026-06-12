@@ -1,4 +1,4 @@
-const { Plugin, PluginSettingTab, Setting, ItemView, Notice, Modal, requestUrl } = require('obsidian');
+const { Plugin, PluginSettingTab, Setting, ItemView, Notice, Modal, requestUrl, MarkdownRenderer, TFile, Menu } = require('obsidian');
 
 const VIEW_TYPE_BOOKSHELF = "bookshelf-view";
 const VIEW_TYPE_SERIES_DETAILS = "series-details-view";
@@ -182,7 +182,7 @@ function attachBookContextMenu(element, book, plugin) {
                 .setIcon("file-text")
                 .onClick(async () => {
                     let mdFile = plugin.app.vault.getAbstractFileByPath(book.metadataFile);
-                    if (mdFile instanceof require('obsidian').TFile) {
+                    if (mdFile instanceof TFile) {
                         plugin.app.workspace.getLeaf(false).openFile(mdFile);
                     } else {
                         new Notice("Metadata file not found.");
@@ -244,7 +244,6 @@ function attachSeriesContextMenu(element, series, plugin) {
     
     element.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
-        const { Menu, Notice, Modal, TFile } = require("obsidian");
         const menu = new Menu();
         
         let targetFolder = plugin.app.vault.getAbstractFileByPath(series.id);
@@ -481,9 +480,9 @@ class BasicRenameModal extends Modal {
                     if (this.targetFile.parent.path === "/") newPath = input.value + "." + this.targetFile.extension;
                     else newPath = this.targetFile.parent.path + "/" + input.value + "." + this.targetFile.extension;
                     await this.plugin.app.fileManager.renameFile(this.targetFile, newPath);
-                    new (require("obsidian").Notice)("Renamed to " + input.value);
+                    new Notice("Renamed to " + input.value);
                 } catch(e) {
-                    new (require("obsidian").Notice)("Failed to rename: " + e.message);
+                    new Notice("Failed to rename: " + e.message);
                 }
             }
             this.close();
@@ -878,7 +877,6 @@ class EditSeriesMetadataModal extends Modal {
                 const prompt = `Provide metadata for the manga/light novel series "${currentTitle}". Return ONLY a valid JSON object (do not wrap in markdown \`\`\` blocks, just the raw JSON text) with these exact keys: "aliases" (array of strings, MUST include the original Japanese title, Romaji title, and English title if available), "summary" (string, short description), "writers" (array of strings), "publisher" (string), "releaseYear" (string, year only), "genres" (array of strings), "tags" (array of strings), "ageRating" (string).`;
                 
                 const model = (this.plugin.settings.geminiModel || "gemini-1.5-flash").trim();
-                const { requestUrl } = require('obsidian');
                 const response = await requestUrl({
                     url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
                     method: 'POST',
@@ -2341,7 +2339,6 @@ When you use Force Rename on a book file, the plugin does more than just rename 
         ];
 
         container.empty();
-        const { MarkdownRenderer } = require('obsidian');
         
         const detailsElements = [];
         
@@ -2367,16 +2364,14 @@ When you use Force Rename on a book file, the plugin does more than just rename 
 
             let contentDiv = details.createDiv();
             contentDiv.style.cssText = "margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--background-modifier-border); user-select: text; -webkit-user-select: text;";
-            
-            await MarkdownRenderer.renderMarkdown(item.text, contentDiv, '', this.plugin);
+            await MarkdownRenderer.render(this.plugin.app, item.text, contentDiv, '', this.plugin);
         }
     }
 
     async renderRecommendedTab(container) {
         container.empty();
         const md = `> [!TIP]\n> **Recommended Plugin for EPUBs:** \n> Obsidian does not natively support reading \`.epub\` files. To read them directly inside Obsidian, we highly recommend using the **EPUB Reader with TTS** plugin.\n> - **Community Plugin:** [EPUB Reader with TTS](obsidian://show-plugin?id=epub-reader-with-tts)\n> - **GitHub:** [obsidian-plugins-epub-reader-with-tts](https://github.com/usero2/obsidian-plugins-epub-reader-with-tts)\n\n> [!TIP]\n> **Recommended Plugin for CBZs (Manga):** \n> Obsidian does not natively support reading \`.cbz\` or \`.cbr\` files. To read them directly inside Obsidian, we highly recommend using the **CBZ Reader** plugin.\n> - **Community Plugin:** [CBZ Reader](obsidian://show-plugin?id=cbz-reader)\n> - **GitHub:** [obsidian-plugins-cbz-reader](https://github.com/usero2/obsidian-plugins-cbz-reader)`;
-        const { MarkdownRenderer } = require('obsidian');
-        await MarkdownRenderer.renderMarkdown(md, container, '', this.plugin);
+        await MarkdownRenderer.render(this.plugin.app, md, container, '', this.plugin);
     }
 
     display() {
