@@ -47,6 +47,14 @@ For detailed, step-by-step instructions on how to use specific features, please 
 
 ![](images/Obsidian_2NtmA9bDXU.png)
 
+## 📦 Release Notes
+
+### v1.0.1
+- **File Size in List View:** The Bookshelf List view now displays the file size next to the file extension.
+- **Remember View State:** Your preferred view mode (Thumbnail, List, Detail, etc.), sort order, and filter settings are now automatically saved and remembered across sessions.
+- **✨ Gemini Auto Fill:** Added an "Auto Fill" button to the Edit Metadata window. You can now automatically fetch and fill series metadata (including Japanese/English/Romaji aliases, summary, writers, publisher, genres, tags, and age rating) using Google's Gemini AI. 
+- **Gemini Settings:** Added settings for "Gemini API Key" and "Gemini Model" to support the new Auto Fill feature.
+
 ## ❤️ Support & Donate
 
 If this plugin has improved your Obsidian workflow, saved you time, or you just want to support its continued development, please consider donating! 

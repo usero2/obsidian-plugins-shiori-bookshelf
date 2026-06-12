@@ -12,7 +12,9 @@ const DEFAULT_SETTINGS = {
     setAsHomepage: false,
     hideBookMdFiles: false,
     ignoreFolders: "_ignore",
-    enableForceRename: false
+    enableForceRename: false,
+    geminiApiKey: "",
+    geminiModel: "gemini-1.5-flash"
 };
 
 // --- Helper Functions ---
@@ -294,7 +296,13 @@ class EditSeriesMetadataModal extends Modal {
     onOpen() {
         const {contentEl} = this;
         contentEl.empty();
-        contentEl.createEl("h2", { text: `Edit Metadata: ${this.series.name}` });
+        
+        const headerContainer = contentEl.createDiv();
+        headerContainer.style.cssText = "display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;";
+        headerContainer.createEl("h2", { text: `Edit Metadata: ${this.series.name}` }).style.margin = "0";
+        
+        const autoFillBtn = headerContainer.createEl("button", { text: "✨ Auto Fill" });
+        autoFillBtn.style.cssText = "padding: 6px 12px; font-weight: bold; border-radius: 4px; background: var(--interactive-accent); color: var(--text-on-accent); cursor: pointer; border: none;";
 
         const data = this.plugin.getLibraryData();
         let allGenres = new Set();
@@ -508,6 +516,78 @@ class EditSeriesMetadataModal extends Modal {
         const genresInput = createInput("Genres (comma separated)", this.seriesMeta.genres ? this.seriesMeta.genres.join(", ") : "", false, sortedGenres);
         const tagsInput = createInput("Tags (comma separated)", this.seriesMeta.tags ? this.seriesMeta.tags.join(", ") : "", false, sortedTags);
         const ageRatingInput = createInput("Age Rating", this.seriesMeta.ageRating || "");
+
+        autoFillBtn.onclick = async (ev) => {
+            ev.preventDefault();
+            const apiKey = (this.plugin.settings.geminiApiKey || "").trim();
+            if (!apiKey) {
+                new Notice("Please set your Gemini API Key in the Shiori Bookshelf plugin settings first.");
+                return;
+            }
+            
+            const currentTitle = titleInput.value.trim() || this.series.name;
+            if (!currentTitle) {
+                new Notice("Please enter a title to search for.");
+                return;
+            }
+            
+            autoFillBtn.disabled = true;
+            autoFillBtn.innerText = "✨ Fetching...";
+            
+            try {
+                const prompt = `Provide metadata for the manga/light novel series "${currentTitle}". Return ONLY a valid JSON object (do not wrap in markdown \`\`\` blocks, just the raw JSON text) with these exact keys: "aliases" (array of strings, MUST include the original Japanese title, Romaji title, and English title if available), "summary" (string, short description), "writers" (array of strings), "publisher" (string), "releaseYear" (string, year only), "genres" (array of strings), "tags" (array of strings), "ageRating" (string).`;
+                
+                const model = (this.plugin.settings.geminiModel || "gemini-1.5-flash").trim();
+                const { requestUrl } = require('obsidian');
+                const response = await requestUrl({
+                    url: `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }]
+                    }),
+                    throw: false
+                });
+                
+                if (response.status !== 200) {
+                    let errMsg = "Unknown error";
+                    try { errMsg = response.json.error.message; } catch(e) { errMsg = response.text || "Status " + response.status; }
+                    throw new Error(errMsg + " (Status " + response.status + ")");
+                }
+                
+                const data = response.json;
+                const textOutput = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                
+                let parsed;
+                try {
+                    const cleaned = textOutput.replace(/^```(json)?\n?/i, '').replace(/\n?```$/, '').trim();
+                    parsed = JSON.parse(cleaned);
+                } catch (err) {
+                    throw new Error("Failed to parse JSON response from Gemini.");
+                }
+                
+                if (parsed.aliases && Array.isArray(parsed.aliases) && parsed.aliases.length > 0) {
+                    const existing = aliasesInput.value ? aliasesInput.value.split(",").map(s => s.trim()).filter(s => s) : [];
+                    const combined = [...new Set([...existing, ...parsed.aliases])];
+                    aliasesInput.value = combined.join(", ");
+                }
+                if (parsed.summary && !summaryInput.value) summaryInput.value = parsed.summary;
+                if (parsed.writers && Array.isArray(parsed.writers) && parsed.writers.length > 0 && !writersInput.value) writersInput.value = parsed.writers.join(", ");
+                if (parsed.publisher && !publisherInput.value) publisherInput.value = parsed.publisher;
+                if (parsed.releaseYear && !releaseYearInput.value) releaseYearInput.value = parsed.releaseYear;
+                if (parsed.genres && Array.isArray(parsed.genres) && parsed.genres.length > 0 && !genresInput.value) genresInput.value = parsed.genres.join(", ");
+                if (parsed.tags && Array.isArray(parsed.tags) && parsed.tags.length > 0 && !tagsInput.value) tagsInput.value = parsed.tags.join(", ");
+                if (parsed.ageRating && !ageRatingInput.value) ageRatingInput.value = parsed.ageRating;
+                
+                new Notice("✨ Auto Fill complete!");
+            } catch (err) {
+                console.error("Gemini Auto Fill Error:", err);
+                new Notice("Error: " + err.message);
+            } finally {
+                autoFillBtn.disabled = false;
+                autoFillBtn.innerText = "✨ Auto Fill";
+            }
+        };
         
         const statusRow = form.createDiv();
         statusRow.style.cssText = "display:flex; flex-direction:column; gap:4px;";
@@ -522,8 +602,8 @@ class EditSeriesMetadataModal extends Modal {
             }
         });
 
-        const btnRow = form.createDiv();
-        btnRow.style.cssText = "display:flex; justify-content:flex-end; gap:10px; margin-top:10px;";
+        const btnRow = contentEl.createDiv();
+        btnRow.style.cssText = "display:flex; justify-content:flex-end; gap:10px; margin-top:15px; padding-top:10px; border-top:1px solid var(--background-modifier-border);";
         
         const cancelBtn = btnRow.createEl("button", { text: "Cancel" });
         cancelBtn.onclick = () => this.close();
@@ -851,9 +931,9 @@ class SeriesDetailsView extends ItemView {
         }
 
         // ── UI state ────────────────────────────────────────────────
-        let currentViewMode = "card";
-        let currentSort     = "volume";
-        let currentFilter   = "";
+        let currentViewMode = this.plugin.settings.seriesViewMode || "list";
+        let currentSort     = this.plugin.settings.seriesSort || "volume";
+        let currentFilter   = this.plugin.settings.seriesFilter || "";
 
         // ── Toolbar ─────────────────────────────────────────────────
         const toolbar = container.createDiv();
@@ -873,7 +953,7 @@ class SeriesDetailsView extends ItemView {
             filterSel.style.cssText = selectCss;
             filterSel.createEl("option", { text: "All types", value: "" });
             allExts.forEach(ext => filterSel.createEl("option", { text: ext.toUpperCase(), value: ext }));
-            filterSel.onchange = () => { currentFilter = filterSel.value; renderContent(); };
+            filterSel.onchange = async () => { currentFilter = filterSel.value; this.plugin.settings.seriesFilter = currentFilter; await this.plugin.saveSettings(); renderContent(); };
         }
 
         const sortSel = controls.createEl("select");
@@ -881,7 +961,7 @@ class SeriesDetailsView extends ItemView {
         [["volume","Sort: Volume"],["name","Sort: Name"],["added","Sort: Date Added"]].forEach(([v,t]) => {
             sortSel.createEl("option", { text: t, value: v });
         });
-        sortSel.onchange = () => { currentSort = sortSel.value; renderContent(); };
+        sortSel.onchange = async () => { currentSort = sortSel.value; this.plugin.settings.seriesSort = currentSort; await this.plugin.saveSettings(); renderContent(); };
 
         const viewBtns = controls.createDiv();
         viewBtns.style.cssText = "display:flex;gap:2px;";
@@ -896,10 +976,12 @@ class SeriesDetailsView extends ItemView {
         modes.forEach(m => {
             const btn = viewBtns.createEl("button", { text: m.icon, title: m.title });
             btn.style.cssText = btnBase + "background:var(--background-secondary);color:var(--text-normal);";
-            btn.onclick = () => {
+            btn.onclick = async () => {
                 currentViewMode = m.id;
                 Object.values(btnMap).forEach(b => b.style.background = "var(--background-secondary)");
                 btn.style.background = "var(--interactive-accent)";
+                this.plugin.settings.seriesViewMode = currentViewMode;
+                await this.plugin.saveSettings();
                 renderContent();
             };
             btnMap[m.id] = btn;
@@ -977,7 +1059,20 @@ class SeriesDetailsView extends ItemView {
                 info.createEl("div", { text: book.metadata.title || book.basename }).style.cssText = "font-weight:600;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
                 if (book.metadata.author) info.createEl("div", { text: book.metadata.author }).style.cssText = "font-size:12px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
 
-                row.createEl("span", { text: book.extension.toUpperCase() }).style.cssText = "font-size:10px;padding:2px 6px;border-radius:4px;background:var(--background-modifier-border);color:var(--text-faint);flex-shrink:0;";
+                const rightContainer = row.createDiv();
+                rightContainer.style.cssText = "display:flex;align-items:center;gap:6px;flex-shrink:0;";
+
+                if (book.file && book.file.stat && book.file.stat.size) {
+                    let bytes = book.file.stat.size;
+                    let sizeStr = "";
+                    if (bytes < 1024) sizeStr = bytes + " B";
+                    else if (bytes < 1024*1024) sizeStr = (bytes/1024).toFixed(1) + " KB";
+                    else if (bytes < 1024*1024*1024) sizeStr = (bytes/(1024*1024)).toFixed(1) + " MB";
+                    else sizeStr = (bytes/(1024*1024*1024)).toFixed(1) + " GB";
+                    rightContainer.createEl("span", { text: sizeStr }).style.cssText = "font-size:10px;padding:2px 6px;border-radius:4px;color:var(--text-muted);background:var(--background-modifier-border);";
+                }
+
+                rightContainer.createEl("span", { text: book.extension.toUpperCase() }).style.cssText = "font-size:10px;padding:2px 6px;border-radius:4px;background:var(--background-modifier-border);color:var(--text-faint);";
                 row.onclick = () => openBook(plugin, book.file);
             });
         };
@@ -1912,6 +2007,28 @@ class BookshelfSettingTab extends PluginSettingTab {
                 .setValue(this.plugin.settings.ignoreFolders)
                 .onChange(async (value) => {
                     this.plugin.settings.ignoreFolders = value;
+                    await this.plugin.saveSettings();
+                }));
+                
+        new Setting(generalContainer)
+            .setName("Gemini API Key")
+            .setDesc("API Key for Gemini AI to auto-fill series metadata. Get it free from Google AI Studio.")
+            .addText(text => text
+                .setPlaceholder("AIzaSy...")
+                .setValue(this.plugin.settings.geminiApiKey)
+                .onChange(async (value) => {
+                    this.plugin.settings.geminiApiKey = value;
+                    await this.plugin.saveSettings();
+                }));
+                
+        new Setting(generalContainer)
+            .setName("Gemini Model")
+            .setDesc("The AI model to use. Try 'gemini-2.0-flash', 'gemini-1.5-flash' or 'gemini-pro'.")
+            .addText(text => text
+                .setPlaceholder("gemini-1.5-flash")
+                .setValue(this.plugin.settings.geminiModel)
+                .onChange(async (value) => {
+                    this.plugin.settings.geminiModel = value;
                     await this.plugin.saveSettings();
                 }));
     }
