@@ -14,13 +14,13 @@ Shiori Bookshelf is a powerful Obsidian plugin that transforms your vault into a
 - **Library Organization:**
   - **Series Libraries:** Automatically group manga, comics, or light novels into a series based on subfolders.
   - **Single Libraries:** Manage standalone books independently, regardless of folder structure.
-- **Built-In Readers:**
-  - Read your files natively without third-party apps!
-  - Full support for **PDF**, **EPUB**, and **CBZ/CBR** formats.
-  - CBZ reader features infinite-scroll lazy loading with progress tracking, allowing massive files to load instantly.
 - **WebApp Server (Remote Access):**
   - Built-in local web server allows you to browse and read your Obsidian library from any web browser, phone, or tablet on your local network.
   - Features a fully responsive mobile-friendly UI, URL routing, advanced filtering, and a built-in remote web reader for all supported formats.
+- **WebApp Built-In Readers:**
+  - Read your files natively without third-party apps!
+  - Full support for **PDF**, **EPUB**, and **CBZ/CBR** formats.
+  - CBZ reader features infinite-scroll lazy loading with progress tracking, allowing massive files to load instantly.
 - **Automated Metadata & AI Integration:**
   - Automatically extracts cover images (`_cover.jpg`) directly from your EPUB, CBZ, and PDF files.
   - **Gemini AI Auto-Fill:** Connect your free Google Gemini API key to automatically fetch and fill rich metadata for your series (including Summary, Genres, Tags, Writers, Publisher, and Release Year) with a single click.
