@@ -234,6 +234,153 @@ function attachBookContextMenu(element, book, plugin) {
     });
 }
 
+function attachSeriesContextMenu(element, series, plugin) {
+    if (series.id.startsWith("standalone-") && series.books.length > 0) {
+        attachBookContextMenu(element, series.books[0], plugin);
+        return;
+    }
+    
+    element.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        const { Menu, Notice, Modal, TFile } = require("obsidian");
+        const menu = new Menu();
+        
+        let targetFolder = plugin.app.vault.getAbstractFileByPath(series.id);
+        
+        menu.addItem((item) => {
+            item.setTitle("Open in new windows")
+                .setIcon("popup-open")
+                .onClick(async () => {
+                    const leaf = plugin.app.workspace.getLeaf('window');
+                    await leaf.setViewState({
+                        type: "series-details-view",
+                        active: true,
+                        state: { seriesId: series.id }
+                    });
+                });
+        });
+        
+        menu.addSeparator();
+        
+        menu.addItem((item) => {
+            item.setTitle("Copy path");
+            item.setIcon("link");
+            if (item.setSubmenu) {
+                const sub = item.setSubmenu();
+                sub.addItem((s) => s.setTitle("as Obsidian URL").onClick(() => {
+                    const url = `obsidian://open?vault=${encodeURIComponent(plugin.app.vault.getName())}&file=${encodeURIComponent(series.id)}`;
+                    navigator.clipboard.writeText(url);
+                    new Notice("Obsidian URL copied");
+                }));
+                sub.addItem((s) => s.setTitle("from vault folder").onClick(() => {
+                    navigator.clipboard.writeText(series.id);
+                    new Notice("Vault path copied");
+                }));
+                sub.addItem((s) => s.setTitle("from system root").onClick(() => {
+                    const absPath = plugin.app.vault.adapter.getBasePath() + "/" + series.id;
+                    navigator.clipboard.writeText(absPath.replace(/\\/g, '/'));
+                    new Notice("System root path copied");
+                }));
+            }
+        });
+        
+        menu.addSeparator();
+        
+        menu.addItem((item) => {
+            item.setTitle("Show in system explorer")
+                .setIcon("folder")
+                .onClick(() => {
+                    plugin.app.showInFolder(series.id);
+                });
+        });
+        
+        menu.addItem((item) => {
+            item.setTitle("Reveal in navigation")
+                .setIcon("folder")
+                .onClick(() => {
+                    if (targetFolder) {
+                        const fileExplorer = plugin.app.internalPlugins.getPluginById("file-explorer");
+                        if (fileExplorer && fileExplorer.instance) {
+                            fileExplorer.instance.revealInFolder(targetFolder);
+                        }
+                    } else {
+                        new Notice("Folder not found in vault.");
+                    }
+                });
+        });
+        
+        menu.addSeparator();
+        
+        menu.addItem((item) => {
+            item.setTitle("Regenerate Cover")
+                .setIcon("image-file")
+                .onClick(async () => {
+                    if (targetFolder) {
+                        await plugin.extractMissingCoversForFolder(targetFolder);
+                    }
+                });
+        });
+        
+        menu.addItem((item) => {
+            item.setTitle("Open Metadata file")
+                .setIcon("file-text")
+                .onClick(async () => {
+                    let seriesMdPath = `${series.id}/${series.name}.md`;
+                    let mdFile = plugin.app.vault.getAbstractFileByPath(seriesMdPath);
+                    if (mdFile instanceof TFile) {
+                        plugin.app.workspace.getLeaf(false).openFile(mdFile);
+                    } else {
+                        new Notice("Series metadata file not found.");
+                    }
+                });
+        });
+
+        if (targetFolder) {
+            menu.addItem((item) => {
+                item.setTitle("Force Rename...")
+                    .setIcon("pencil")
+                    .onClick(() => {
+                        new ForceRenameModal(plugin.app, targetFolder, plugin).open();
+                    });
+            });
+            
+            menu.addSeparator();
+            
+            menu.addItem((item) => {
+                item.setTitle("Rename...")
+                    .setIcon("pencil")
+                    .onClick(() => {
+                        new BasicRenameModal(plugin.app, targetFolder, plugin).open();
+                    });
+            });
+            
+            menu.addItem((item) => {
+                item.setTitle("Delete")
+                    .setIcon("trash")
+                    .onClick(async () => {
+                        const confirm = new Modal(plugin.app);
+                        confirm.contentEl.createEl("h3", { text: `Delete folder ${targetFolder.name}?` });
+                        const btnRow = confirm.contentEl.createDiv({ cls: "modal-button-container" });
+                        btnRow.style.display = "flex"; btnRow.style.gap = "10px"; btnRow.style.marginTop = "20px";
+                        const cancelBtn = btnRow.createEl("button", { text: "Cancel" });
+                        cancelBtn.onclick = () => confirm.close();
+                        const delBtn = btnRow.createEl("button", { text: "Delete", cls: "mod-warning" });
+                        delBtn.onclick = async () => {
+                            await plugin.app.fileManager.trashFile(targetFolder);
+                            new Notice(targetFolder.name + " deleted.");
+                            confirm.close();
+                            const bsLeaves = plugin.app.workspace.getLeavesOfType("bookshelf-view");
+                            bsLeaves.forEach(l => l.view.renderBookshelf());
+                        };
+                        confirm.open();
+                    });
+            });
+        }
+        
+        menu.showAtMouseEvent(ev);
+    });
+}
+
 function renderBooks(grid, books, plugin) {
     grid.empty();
     for (let book of books) {
@@ -1742,6 +1889,8 @@ class BookshelfView extends ItemView {
                         state: { seriesId: series.id }
                     });
                 };
+                
+                attachSeriesContextMenu(card, series, this.plugin);
             }
         };
 

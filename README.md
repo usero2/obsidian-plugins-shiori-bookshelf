@@ -63,6 +63,10 @@ For detailed, step-by-step instructions on how to use specific features, please 
 - **Reset Filters Button:** Added a convenient "Reset Filters" button to instantly clear all selected filters across all categories.
 - **Thumbnail Zoom:** Added zoom controls (`-`, `reset`, `+`) for the Thumbnail view, allowing you to easily resize book covers.
 
+### v1.0.3
+- **Series Context Menu:** Added a right-click context menu to Series cards, bringing feature parity with book cards. You can now easily perform actions like Open in new window, Copy path, Show in system explorer, Reveal in navigation, Regenerate Cover (for all books in the series), Open Metadata file, Force Rename, and Delete directly from the series folder.
+- **Fixed How To Tab:** Fixed an issue where the "How To" instructions in the settings tab would disappear when the plugin was downloaded/installed via the community plugins directory. Instructions are now bundled directly within the plugin.
+
 ## ❤️ Support & Donate
 
 If this plugin has improved your Obsidian workflow, saved you time, or you just want to support its continued development, please consider donating! 
