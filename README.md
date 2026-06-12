@@ -67,6 +67,11 @@ For detailed, step-by-step instructions on how to use specific features, please 
 - **Series Context Menu:** Added a right-click context menu to Series cards, bringing feature parity with book cards. You can now easily perform actions like Open in new window, Copy path, Show in system explorer, Reveal in navigation, Regenerate Cover (for all books in the series), Open Metadata file, Force Rename, and Delete directly from the series folder.
 - **Fixed How To Tab:** Fixed an issue where the "How To" instructions in the settings tab would disappear when the plugin was downloaded/installed via the community plugins directory. Instructions are now bundled directly within the plugin.
 
+### v1.0.4
+- **WebApp Advance Filters:** Brought the "Advance Filter" functionality to the WebApp! You can now easily filter your entire library by Libraries, Genres, and Tags directly from your browser, complete with a convenient Reset Filters button.
+- **WebApp Series Detail View:** Overhauled the WebApp series view. When clicking into a series, it now beautifully displays full series details including the cover image, writers, publisher, release year, status, genres, tags, and summary, matching the rich experience of the Obsidian app.
+- **WebApp URL Routing:** Implemented URL routing in the WebApp. Navigating into a series now updates the URL (e.g., `/?series=...`), allowing you to bookmark, share direct links to specific series, and use your browser's back/forward buttons seamlessly.
+
 ## ❤️ Support & Donate
 
 If this plugin has improved your Obsidian workflow, saved you time, or you just want to support its continued development, please consider donating! 

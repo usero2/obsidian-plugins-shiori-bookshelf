@@ -14,7 +14,9 @@ const DEFAULT_SETTINGS = {
     ignoreFolders: "_ignore",
     enableForceRename: false,
     geminiApiKey: "",
-    geminiModel: "gemini-1.5-flash"
+    geminiModel: "gemini-1.5-flash",
+    enableWebServer: false,
+    webServerPort: 7070
 };
 
 // --- Helper Functions ---
@@ -2387,6 +2389,7 @@ When you use Force Rename on a book file, the plugin does more than just rename 
         tabsContainer.style.cssText = "display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--background-modifier-border); padding-bottom: 5px;";
 
         const btnGeneral = tabsContainer.createEl("button", { text: "General" });
+        const btnWebServer = tabsContainer.createEl("button", { text: "Web Server" });
         const btnHowTo = tabsContainer.createEl("button", { text: "How to" });
         const btnRecommended = tabsContainer.createEl("button", { text: "Recommended Reader" });
 
@@ -2394,10 +2397,15 @@ When you use Force Rename on a book file, the plugin does more than just rename 
         const inactiveStyle = "background: transparent; color: var(--text-muted); box-shadow: none;";
 
         btnGeneral.style.cssText = activeStyle;
+        btnWebServer.style.cssText = inactiveStyle;
         btnHowTo.style.cssText = inactiveStyle;
         btnRecommended.style.cssText = inactiveStyle;
 
         const generalContainer = containerEl.createDiv();
+        
+        const webServerContainer = containerEl.createDiv();
+        webServerContainer.style.display = "none";
+
         const howToContainer = containerEl.createDiv();
         howToContainer.style.display = "none";
         howToContainer.style.userSelect = "text";
@@ -2410,9 +2418,22 @@ When you use Force Rename on a book file, the plugin does more than just rename 
 
         btnGeneral.onclick = () => {
             btnGeneral.style.cssText = activeStyle;
+            btnWebServer.style.cssText = inactiveStyle;
             btnHowTo.style.cssText = inactiveStyle;
             btnRecommended.style.cssText = inactiveStyle;
             generalContainer.style.display = "block";
+            webServerContainer.style.display = "none";
+            howToContainer.style.display = "none";
+            recommendedContainer.style.display = "none";
+        };
+
+        btnWebServer.onclick = () => {
+            btnWebServer.style.cssText = activeStyle;
+            btnGeneral.style.cssText = inactiveStyle;
+            btnHowTo.style.cssText = inactiveStyle;
+            btnRecommended.style.cssText = inactiveStyle;
+            webServerContainer.style.display = "block";
+            generalContainer.style.display = "none";
             howToContainer.style.display = "none";
             recommendedContainer.style.display = "none";
         };
@@ -2420,9 +2441,11 @@ When you use Force Rename on a book file, the plugin does more than just rename 
         btnHowTo.onclick = () => {
             btnHowTo.style.cssText = activeStyle;
             btnGeneral.style.cssText = inactiveStyle;
+            btnWebServer.style.cssText = inactiveStyle;
             btnRecommended.style.cssText = inactiveStyle;
             howToContainer.style.display = "block";
             generalContainer.style.display = "none";
+            webServerContainer.style.display = "none";
             recommendedContainer.style.display = "none";
             if (!this.howToRendered) {
                 this.renderHowToTab(howToContainer);
@@ -2433,9 +2456,11 @@ When you use Force Rename on a book file, the plugin does more than just rename 
         btnRecommended.onclick = () => {
             btnRecommended.style.cssText = activeStyle;
             btnGeneral.style.cssText = inactiveStyle;
+            btnWebServer.style.cssText = inactiveStyle;
             btnHowTo.style.cssText = inactiveStyle;
             recommendedContainer.style.display = "block";
             generalContainer.style.display = "none";
+            webServerContainer.style.display = "none";
             howToContainer.style.display = "none";
             if (!this.recommendedRendered) {
                 this.renderRecommendedTab(recommendedContainer);
@@ -2562,6 +2587,38 @@ When you use Force Rename on a book file, the plugin does more than just rename 
                     this.plugin.settings.geminiModel = value;
                     await this.plugin.saveSettings();
                 }));
+
+        // Web Server Settings
+        webServerContainer.createEl("p", { text: "Access your Bookshelf from a web browser on other devices (e.g. phone or tablet) over your local network." }).style.color = "var(--text-muted)";
+        
+        new Setting(webServerContainer)
+            .setName("Enable Web Server")
+            .setDesc("Turn on the local web server. Restart required to apply port changes.")
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.enableWebServer)
+                .onChange(async (value) => {
+                    this.plugin.settings.enableWebServer = value;
+                    await this.plugin.saveSettings();
+                    if (value) {
+                        this.plugin.webServer.start();
+                    } else {
+                        this.plugin.webServer.stop();
+                    }
+                }));
+
+        new Setting(webServerContainer)
+            .setName("Web Server Port")
+            .setDesc("The port to run the web server on (default: 7070).")
+            .addText(text => text
+                .setPlaceholder("7070")
+                .setValue(String(this.plugin.settings.webServerPort))
+                .onChange(async (value) => {
+                    this.plugin.settings.webServerPort = parseInt(value) || 7070;
+                    await this.plugin.saveSettings();
+                    if (this.plugin.settings.enableWebServer) {
+                        this.plugin.webServer.start(); // restarts with new port
+                    }
+                }));
     }
 }
 
@@ -2589,6 +2646,9 @@ class DummyExtView extends ItemView {
 class BookshelfPlugin extends Plugin {
     async onload() {
         await this.loadSettings();
+        
+        this.webServer = new BookshelfServer(this);
+        this.webServer.start();
 
         this.registerView(VIEW_TYPE_BOOKSHELF, (leaf) => new BookshelfView(leaf, this));
         this.registerView(VIEW_TYPE_SERIES_DETAILS, (leaf) => new SeriesDetailsView(leaf, this));
@@ -2875,6 +2935,7 @@ class BookshelfPlugin extends Plugin {
     }
 
     onunload() {
+        if (this.webServer) this.webServer.stop();
         this.applyHideCoverCss(false);
         this.applyHideBookMdCss(false);
         if (this._hideBookMdTimeout) clearTimeout(this._hideBookMdTimeout);
@@ -3559,6 +3620,794 @@ class BookshelfPlugin extends Plugin {
         if (leaves.length > 0) {
             leaves[0].view.renderBookshelf();
         }
+    }
+}
+
+class BookshelfServer {
+    constructor(plugin) {
+        this.plugin = plugin;
+        this.server = null;
+    }
+
+    start() {
+        if (!this.plugin.settings.enableWebServer) return;
+        
+        let port = this.plugin.settings.webServerPort || 7070;
+        if (typeof port === 'string') port = parseInt(port);
+
+        if (this.server) this.stop();
+
+        try {
+            const http = require('http');
+            const fs = require('fs');
+            const path = require('path');
+
+            this.server = http.createServer(async (req, res) => {
+                res.setHeader('Access-Control-Allow-Origin', '*');
+                
+                try {
+                    const url = new URL(req.url, `http://localhost:${port}`);
+                    const basePath = this.plugin.app.vault.adapter.getBasePath ? this.plugin.app.vault.adapter.getBasePath() : "";
+                    
+                    if (url.pathname === '/api/library') {
+                        const data = this.plugin.getLibraryData();
+                        
+                        const resolveCover = (coverName, contextPath) => {
+                            if (!coverName) return null;
+                            if (coverName.startsWith("http")) return coverName;
+                            let f = this.plugin.app.metadataCache.getFirstLinkpathDest(coverName, contextPath);
+                            if (f) return f.path;
+                            if (coverName.includes("/")) {
+                                let fallbackFile = this.plugin.app.metadataCache.getFirstLinkpathDest(coverName.split("/").pop(), contextPath);
+                                if (fallbackFile) return fallbackFile.path;
+                            }
+                            return null;
+                        };
+
+                        const cleanData = data.series.map(s => {
+                            let sCover = null;
+                            if (s.books.length > 0) {
+                                sCover = resolveCover(s.coverImg, s.books[0].file.path);
+                            }
+                            
+                            return {
+                                id: s.id,
+                                name: s.name,
+                                library: s.library,
+                                metadata: s.metadata,
+                                coverImg: sCover,
+                                books: s.books.map(b => {
+                                    return {
+                                        path: b.file.path,
+                                        basename: b.basename,
+                                        extension: b.extension,
+                                        mtime: b.file.stat.mtime,
+                                        metadata: b.metadata,
+                                        coverImg: resolveCover(b.metadata.cover, b.file.path)
+                                    }
+                                })
+                            };
+                        });
+                        
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ series: cleanData }));
+                    } else if (url.pathname === '/api/cover') {
+                        const p = url.searchParams.get('path');
+                        if (!p) return res.writeHead(400).end();
+                        if (p.startsWith('http')) {
+                            res.writeHead(302, { 'Location': p });
+                            return res.end();
+                        }
+                        const absPath = basePath ? path.join(basePath, p) : "";
+                        if (absPath && fs.existsSync(absPath)) {
+                            const ext = path.extname(absPath).toLowerCase();
+                            let ct = 'image/jpeg';
+                            if (ext === '.png') ct = 'image/png';
+                            if (ext === '.webp') ct = 'image/webp';
+                            res.writeHead(200, { 'Content-Type': ct });
+                            fs.createReadStream(absPath).pipe(res);
+                        } else {
+                            res.writeHead(404).end();
+                        }
+                    } else if (url.pathname === '/api/file') {
+                        const p = url.searchParams.get('path');
+                        if (!p) return res.writeHead(400).end();
+                        const absPath = basePath ? path.join(basePath, p) : "";
+                        if (absPath && fs.existsSync(absPath)) {
+                            const stat = fs.statSync(absPath);
+                            const ext = path.extname(absPath).toLowerCase();
+                            let ct = 'application/octet-stream';
+                            if (ext === '.pdf') ct = 'application/pdf';
+                            if (ext === '.epub') ct = 'application/epub+zip';
+                            if (ext === '.cbz') ct = 'application/x-cbz';
+                            
+                            res.writeHead(200, { 
+                                'Content-Type': ct,
+                                'Content-Length': stat.size,
+                                'Content-Disposition': `inline; filename="${encodeURIComponent(path.basename(absPath))}"`
+                            });
+                            fs.createReadStream(absPath).pipe(res);
+                        } else {
+                            res.writeHead(404).end();
+                        }
+                    } else {
+                        res.writeHead(200, { 'Content-Type': 'text/html' });
+                        res.end(this.getIndexHtml());
+                    }
+                } catch (e) {
+                    res.writeHead(500);
+                    res.end(e.toString());
+                }
+            });
+
+            this.server.listen(port, '0.0.0.0', () => {
+                console.log(`Shiori Bookshelf server running on port ${port}`);
+            });
+            this.server.on('error', (e) => {
+                console.error("Bookshelf server error:", e);
+                new (require('obsidian').Notice)(`Failed to start Web Server on port ${port}. Is it already in use?`);
+            });
+        } catch (e) {
+            console.error("Failed to initialize server. Are you on mobile?", e);
+            new (require('obsidian').Notice)("Web Server feature is only available on Desktop.");
+        }
+    }
+
+    stop() {
+        if (this.server) {
+            this.server.close();
+            this.server = null;
+            console.log("Shiori Bookshelf server stopped.");
+        }
+    }
+
+    getIndexHtml() {
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shiori Bookshelf</title>
+<style>
+    :root {
+        --background-primary: #1e1e1e;
+        --background-secondary: #242424;
+        --background-modifier-border: #3a3a3a;
+        --background-modifier-active-hover: #2a2a2a;
+        --text-normal: #dcddde;
+        --text-muted: #8e9092;
+        --interactive-accent: #7f6df2;
+        --text-on-accent: #ffffff;
+        --interactive-normal: #2a2a2a;
+        --interactive-hover: #333333;
+        --font-ui: system-ui, -apple-system, sans-serif;
+    }
+    body { font-family: var(--font-ui); background: var(--background-primary); color: var(--text-normal); margin: 0; padding: 20px; }
+    
+    /* Header Bar */
+    .bookshelf-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 10px; }
+    .bookshelf-title { margin: 0; font-size: 1.5em; font-weight: bold; white-space: nowrap; }
+    .search-container { display: flex; gap: 10px; flex: 1; min-width: 250px; }
+    .bookshelf-search, .bookshelf-select { flex: 1; padding: 8px 12px; border-radius: 5px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); outline: none; }
+    .bookshelf-search:focus, .bookshelf-select:focus { border-color: var(--interactive-accent); }
+    .btn { padding: 8px 12px; border-radius: 5px; border: 1px solid var(--background-modifier-border); background: var(--interactive-normal); color: var(--text-normal); cursor: pointer; white-space: nowrap; font-size:14px; }
+    .btn:hover { background: var(--interactive-hover); }
+    .btn-accent { background: var(--interactive-accent); color: var(--text-on-accent); border: none; }
+    .btn-accent:hover { opacity: 0.9; }
+
+    /* Layouts */
+    .section-title { font-size: 1.2em; font-weight: bold; margin: 20px 0 10px 0; display: flex; justify-content: space-between; align-items: center; }
+    .bookshelf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 20px; }
+    .new-books-scroll { display: flex; overflow-x: auto; gap: 20px; padding-bottom: 10px; margin-bottom: 20px; }
+    .new-books-scroll::-webkit-scrollbar { height: 8px; }
+    .new-books-scroll::-webkit-scrollbar-thumb { background: var(--background-modifier-border); border-radius: 4px; }
+    .new-books-scroll .bookshelf-card { width: 150px; min-width: 150px; max-width: 150px; flex: 0 0 auto; }
+    
+    /* Cards */
+    .bookshelf-card { min-width: 150px; flex-shrink: 0; border: 1px solid var(--background-modifier-border); border-radius: 8px; padding: 10px; cursor: pointer; display: flex; flex-direction: column; background: var(--background-secondary); transition: transform 0.2s, box-shadow 0.2s; height: auto; }
+    .bookshelf-card:hover { transform: translateY(-4px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    .bookshelf-cover { position: relative; width: 100%; aspect-ratio: 2/3; background: var(--background-modifier-active-hover); border-radius: 4px; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .bookshelf-cover img { width: 100%; height: 100%; object-fit: cover; }
+    .card-info { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .card-title { font-size: 14px; font-weight: bold; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2; margin-bottom: 2px; word-break: break-word; }
+    .card-alias { font-size: 12px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px; }
+    .card-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 5px; }
+    .card-badge { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--background-modifier-border); color: var(--text-muted); align-self: flex-start; margin-top: auto; text-transform: uppercase; }
+    hr { border: none; border-top: 1px solid var(--background-modifier-border); margin: 30px 0; }
+    
+    /* Details View */
+    #books-view { display: none; }
+    .header-bar { display: flex; align-items: center; gap: 15px; margin-bottom: 20px; }
+    .back-btn { background: transparent; color: var(--text-muted); border: none; font-size: 24px; cursor: pointer; padding: 0; }
+    .back-btn:hover { color: var(--text-normal); }
+    .download-btn { display: inline-block; background: var(--interactive-accent); color: var(--text-on-accent); text-decoration: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; margin-top: 10px; font-weight: bold; text-align: center; }
+    .download-btn:hover { opacity: 0.9; }
+</style>
+</head>
+<body>
+    <div id="app">
+        <!-- Main Series View -->
+        <div id="series-view">
+            <div class="bookshelf-header">
+                <h2 class="bookshelf-title">Shiori <span style="font-size:0.7em">Bookshelf</span></h2>
+                <div class="search-container">
+                    <input type="text" id="search-series" class="bookshelf-search" placeholder="Filter by series...">
+                    <input type="text" id="search-writer" class="bookshelf-search" placeholder="Filter by writer...">
+                    <select id="status-filter" class="bookshelf-select">
+                        <option value="Any Status">Any Status</option>
+                        <option value="Ongoing">Ongoing</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Hiatus">Hiatus</option>
+                        <option value="Cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <button class="btn" id="adv-filter-btn" onclick="toggleAdvFilter()">Advance Filter</button>
+            </div>
+
+            <div id="filters-container" style="display:none; position:relative; margin-bottom:15px;">
+                <button class="btn" style="position:absolute; right:0; top:0; font-size:12px; padding:4px 10px;" onclick="resetFilters()">Reset Filters</button>
+                <div id="filter-sections"></div>
+            </div>
+
+            <div id="new-books-container">
+                <h3 class="section-title" style="justify-content: flex-start;">New Book Add</h3>
+                <div class="new-books-scroll" id="new-books-scroll"></div>
+                <hr>
+            </div>
+
+            <div class="section-title">
+                <span id="series-count">Series (0)</span>
+                <select id="sort-select" class="bookshelf-select" style="width:auto; padding:4px 8px; font-size:12px; flex:none;">
+                    <option value="Last Update">Sort by Last Update</option>
+                    <option value="A-Z">Sort by A-Z</option>
+                    <option value="Z-A">Sort by Z-A</option>
+                </select>
+            </div>
+            
+            <div class="bookshelf-grid" id="series-grid">Loading...</div>
+        </div>
+
+        <!-- Books Detail View -->
+        <div id="books-view">
+            <div class="header-bar">
+                <button class="back-btn" onclick="showSeries(true)">←</button>
+                <h2 id="books-title" style="margin:0; display:none;"></h2>
+            </div>
+            <div id="series-header-info" style="display:flex;gap:20px;margin-bottom:24px;align-items:flex-start;flex-wrap:wrap;"></div>
+            <div class="bookshelf-grid" id="books-grid"></div>
+        </div>
+    </div>
+
+    <script>
+        let libraryData = [];
+        let filteredSeries = [];
+        let allBooks = [];
+
+        let allGenres = new Set();
+        let allTags = new Set();
+        let allLibraries = new Set();
+
+        let includeGenres = new Set();
+        let excludeGenres = new Set();
+        let includeTags = new Set();
+        let excludeTags = new Set();
+        let includeLibraries = new Set();
+        let excludeLibraries = new Set();
+
+        let isAdvVisible = false;
+
+        async function loadData() {
+            try {
+                const res = await fetch('/api/library');
+                const data = await res.json();
+                libraryData = data.series;
+                
+                // Populate filter sets
+                libraryData.forEach(s => {
+                    if (s.library) allLibraries.add(s.library);
+                    if (s.metadata) {
+                        let g1 = s.metadata.genres;
+                        if (Array.isArray(g1)) g1.forEach(x => allGenres.add(String(x).trim()));
+                        else if (typeof g1 === "string") g1.split(",").forEach(x => allGenres.add(x.trim()));
+                        let g2 = s.metadata.genre;
+                        if (Array.isArray(g2)) g2.forEach(x => allGenres.add(String(x).trim()));
+                        else if (typeof g2 === "string") g2.split(",").forEach(x => allGenres.add(x.trim()));
+                        
+                        let t1 = s.metadata.tags;
+                        if (Array.isArray(t1)) t1.forEach(x => allTags.add(String(x).trim()));
+                        else if (typeof t1 === "string") t1.split(",").forEach(x => allTags.add(x.trim()));
+                        let t2 = s.metadata.tag;
+                        if (Array.isArray(t2)) t2.forEach(x => allTags.add(String(x).trim()));
+                        else if (typeof t2 === "string") t2.split(",").forEach(x => allTags.add(x.trim()));
+                    }
+                });
+                allGenres.delete("");
+                allTags.delete("");
+                buildFilterSections();
+
+                // Collect all books for New Books section
+                allBooks = [];
+                libraryData.forEach(s => {
+                    s.books.forEach(b => {
+                        allBooks.push({ ...b, series: s });
+                    });
+                });
+                
+                // Sort by mtime descending
+                allBooks.sort((a,b) => (b.mtime || 0) - (a.mtime || 0));
+
+                applyFilters();
+                renderNewBooks();
+
+                const params = new URLSearchParams(window.location.search);
+                const seriesId = params.get('series');
+                if (seriesId) {
+                    showBooksBySeriesId(seriesId, false);
+                }
+            } catch (e) {
+                document.getElementById('series-grid').innerText = 'Error loading library. Make sure Obsidian is running.';
+            }
+        }
+
+        function toggleAdvFilter() {
+            isAdvVisible = !isAdvVisible;
+            document.getElementById('filters-container').style.display = isAdvVisible ? 'block' : 'none';
+        }
+
+        function resetFilters() {
+            includeLibraries.clear(); excludeLibraries.clear();
+            includeGenres.clear(); excludeGenres.clear();
+            includeTags.clear(); excludeTags.clear();
+            buildFilterSections();
+            applyFilters();
+        }
+
+        function createFilterSectionHTML(title, items, incSet, excSet, type) {
+            if (items.length === 0) return '';
+            let html = \`<div style="margin-bottom: 5px;">
+                <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+                    <h4 style="margin:0; color:var(--text-muted); font-size:14px; font-weight:bold;">\${title}</h4>
+                    <button style="background:transparent; border:none; box-shadow:none; color:var(--text-accent); font-size:12px; cursor:pointer; padding:0;" onclick="toggleFilterList('\${type}')" id="toggle-btn-\${type}">Hide</button>
+                </div>
+                <div style="display:flex; flex-wrap:wrap; gap:8px;" id="list-\${type}">\`;
+            items.forEach(item => {
+                let color = "var(--text-normal)", border = "1px solid var(--background-modifier-border)";
+                if (incSet.has(item)) {
+                    color = "var(--text-success, #4CAF50)";
+                    border = "1px solid var(--text-success, #4CAF50)";
+                } else if (excSet.has(item)) {
+                    color = "var(--text-error, #f44336)";
+                    border = "1px dashed var(--text-error, #f44336)";
+                }
+                html += \`<button onclick="toggleFilterItem('\${type}', '\${item.replace(/'/g, "\\\\'")}')" style="padding:4px 10px; border-radius:6px; font-size:12px; cursor:pointer; background:var(--background-secondary); transition:all 0.1s; color:\${color}; border:\${border};">\${item}</button>\`;
+            });
+            html += \`</div></div>\`;
+            if (title === 'Tags') html += \`<hr style="margin: 15px 0 0 0; border: none; border-top: 1px solid var(--background-modifier-border);">\`;
+            return html;
+        }
+
+        let sectionVisibility = { lib: true, gen: true, tag: true };
+
+        function toggleFilterList(type) {
+            sectionVisibility[type] = !sectionVisibility[type];
+            document.getElementById('list-' + type).style.display = sectionVisibility[type] ? 'flex' : 'none';
+            document.getElementById('toggle-btn-' + type).innerText = sectionVisibility[type] ? 'Hide' : 'Show';
+        }
+
+        function toggleFilterItem(type, item) {
+            let incSet, excSet;
+            if (type === 'lib') { incSet = includeLibraries; excSet = excludeLibraries; }
+            else if (type === 'gen') { incSet = includeGenres; excSet = excludeGenres; }
+            else if (type === 'tag') { incSet = includeTags; excSet = excludeTags; }
+
+            if (!incSet.has(item) && !excSet.has(item)) {
+                incSet.add(item);
+            } else if (incSet.has(item)) {
+                incSet.delete(item);
+                excSet.add(item);
+            } else {
+                excSet.delete(item);
+            }
+            buildFilterSections();
+            applyFilters();
+        }
+
+        function buildFilterSections() {
+            let sortedLibraries = Array.from(allLibraries).sort((a,b) => a.localeCompare(b));
+            let sortedGenres = Array.from(allGenres).sort((a,b) => a.localeCompare(b));
+            let sortedTags = Array.from(allTags).sort((a,b) => a.localeCompare(b));
+            
+            let html = '';
+            html += createFilterSectionHTML("Libraries", sortedLibraries, includeLibraries, excludeLibraries, 'lib');
+            html += createFilterSectionHTML("Genres", sortedGenres, includeGenres, excludeGenres, 'gen');
+            html += createFilterSectionHTML("Tags", sortedTags, includeTags, excludeTags, 'tag');
+            
+            document.getElementById('filter-sections').innerHTML = html;
+            
+            // Restore visibility state
+            ['lib', 'gen', 'tag'].forEach(type => {
+                let list = document.getElementById('list-' + type);
+                let btn = document.getElementById('toggle-btn-' + type);
+                if (list && btn) {
+                    list.style.display = sectionVisibility[type] ? 'flex' : 'none';
+                    btn.innerText = sectionVisibility[type] ? 'Hide' : 'Show';
+                }
+            });
+        }
+
+        function getCoverUrl(coverImg) {
+            if (coverImg) {
+                if (coverImg.startsWith('http')) return coverImg;
+                return '/api/cover?path=' + encodeURIComponent(coverImg);
+            }
+            return null;
+        }
+
+        function renderNewBooks() {
+            const scroll = document.getElementById('new-books-scroll');
+            scroll.innerHTML = '';
+            const recentBooks = allBooks.slice(0, 10);
+            
+            if (recentBooks.length === 0) {
+                document.getElementById('new-books-container').style.display = 'none';
+                return;
+            }
+            document.getElementById('new-books-container').style.display = 'block';
+
+            recentBooks.forEach(b => {
+                const card = document.createElement('div');
+                card.className = 'bookshelf-card';
+                card.onclick = () => showBooksBySeriesId(b.series.id);
+                
+                const title = (b.metadata && b.metadata.title) ? b.metadata.title : b.basename;
+                const cUrl = getCoverUrl(b.coverImg) || getCoverUrl(b.series.coverImg);
+                let coverHtml = cUrl ? \`<img src="\${cUrl}" loading="lazy">\` : '<span style="color:#888;font-size:10px;">NO COVER</span>';
+                
+                card.innerHTML = \`
+                    <div class="bookshelf-cover">\${coverHtml}</div>
+                    <div class="card-info">
+                        <div class="card-title" title="\${title}">\${title}</div>
+                        <div class="card-badge">\${b.extension}</div>
+                    </div>
+                \`;
+                scroll.appendChild(card);
+            });
+        }
+
+        function applyFilters() {
+            const qSeries = document.getElementById('search-series').value.toLowerCase();
+            const qWriter = document.getElementById('search-writer').value.toLowerCase();
+            const qStatus = document.getElementById('status-filter').value;
+            const sortMode = document.getElementById('sort-select').value;
+
+            filteredSeries = libraryData.filter(s => {
+                const title = ((s.metadata && s.metadata.title) ? s.metadata.title : s.name).toLowerCase();
+                const alias = (s.metadata && s.metadata.aliases && Array.isArray(s.metadata.aliases)) ? s.metadata.aliases.join(" ").toLowerCase() : "";
+                
+                if (qSeries && !title.includes(qSeries) && !alias.includes(qSeries)) return false;
+                
+                if (qWriter) {
+                    let wMatch = false;
+                    if (s.metadata && s.metadata.writers) {
+                        let w = s.metadata.writers;
+                        let arr = Array.isArray(w) ? w : (typeof w === "string" ? w.split(",") : []);
+                        if (arr.some(writer => String(writer).toLowerCase().includes(qWriter))) wMatch = true;
+                    }
+                    if (!wMatch && !s.metadata) {
+                        for (let b of s.books) {
+                            if (b.metadata && b.metadata.author && String(b.metadata.author).toLowerCase().includes(qWriter)) {
+                                wMatch = true; break;
+                            }
+                        }
+                    }
+                    if (!wMatch) return false;
+                }
+                
+                if (qStatus !== "Any Status") {
+                    const status = (s.metadata && s.metadata.status) ? s.metadata.status : "Ongoing";
+                    if (status !== qStatus) return false;
+                }
+
+                if (includeLibraries.size > 0 || excludeLibraries.size > 0) {
+                    if (excludeLibraries.has(s.library)) return false;
+                    if (includeLibraries.size > 0 && !includeLibraries.has(s.library)) return false;
+                }
+
+                if (includeGenres.size > 0 || excludeGenres.size > 0) {
+                    let sGenres = [];
+                    if (s.metadata) {
+                        let g1 = s.metadata.genres;
+                        if (Array.isArray(g1)) sGenres.push(...g1.map(x => String(x).trim().toLowerCase()));
+                        else if (typeof g1 === "string") sGenres.push(...g1.split(",").map(x => x.trim().toLowerCase()));
+                        let g2 = s.metadata.genre;
+                        if (Array.isArray(g2)) sGenres.push(...g2.map(x => String(x).trim().toLowerCase()));
+                        else if (typeof g2 === "string") sGenres.push(...g2.split(",").map(x => x.trim().toLowerCase()));
+                    }
+                    for (let g of excludeGenres) {
+                        if (sGenres.includes(g.toLowerCase())) return false;
+                    }
+                    if (includeGenres.size > 0) {
+                        let match = true;
+                        for (let g of includeGenres) {
+                            if (!sGenres.includes(g.toLowerCase())) { match = false; break; }
+                        }
+                        if (!match) return false;
+                    }
+                }
+
+                if (includeTags.size > 0 || excludeTags.size > 0) {
+                    let sTags = [];
+                    if (s.metadata) {
+                        let t1 = s.metadata.tags;
+                        if (Array.isArray(t1)) sTags.push(...t1.map(x => String(x).trim().toLowerCase()));
+                        else if (typeof t1 === "string") sTags.push(...t1.split(",").map(x => x.trim().toLowerCase()));
+                        let t2 = s.metadata.tag;
+                        if (Array.isArray(t2)) sTags.push(...t2.map(x => String(x).trim().toLowerCase()));
+                        else if (typeof t2 === "string") sTags.push(...t2.split(",").map(x => x.trim().toLowerCase()));
+                    }
+                    for (let t of excludeTags) {
+                        if (sTags.includes(t.toLowerCase())) return false;
+                    }
+                    if (includeTags.size > 0) {
+                        let match = true;
+                        for (let t of includeTags) {
+                            if (!sTags.includes(t.toLowerCase())) { match = false; break; }
+                        }
+                        if (!match) return false;
+                    }
+                }
+
+                return true;
+            });
+
+            // Sorting
+            filteredSeries.sort((a, b) => {
+                if (sortMode === "A-Z") {
+                    const ta = (a.metadata && a.metadata.title) ? a.metadata.title : a.name;
+                    const tb = (b.metadata && b.metadata.title) ? b.metadata.title : b.name;
+                    return ta.localeCompare(tb);
+                } else if (sortMode === "Z-A") {
+                    const ta = (a.metadata && a.metadata.title) ? a.metadata.title : a.name;
+                    const tb = (b.metadata && b.metadata.title) ? b.metadata.title : b.name;
+                    return tb.localeCompare(ta);
+                } else { // Last Update
+                    const aMax = Math.max(0, ...a.books.map(bk => bk.mtime || 0));
+                    const bMax = Math.max(0, ...b.books.map(bk => bk.mtime || 0));
+                    return bMax - aMax;
+                }
+            });
+
+            document.getElementById('series-count').innerText = \`Series (\${filteredSeries.length})\`;
+            renderSeriesGrid();
+        }
+
+        function renderSeriesGrid() {
+            const grid = document.getElementById('series-grid');
+            grid.innerHTML = '';
+            
+            if (filteredSeries.length === 0) {
+                grid.innerHTML = '<div style="color:var(--text-muted);">No series found matching the criteria.</div>';
+                return;
+            }
+
+            filteredSeries.forEach(s => {
+                const card = document.createElement('div');
+                card.className = 'bookshelf-card';
+                card.onclick = () => showBooksBySeriesId(s.id);
+                
+                const title = (s.metadata && s.metadata.title) ? s.metadata.title : s.name;
+                const alias = (s.metadata && s.metadata.aliases && Array.isArray(s.metadata.aliases)) ? s.metadata.aliases[0] : "";
+                
+                const cUrl = getCoverUrl(s.coverImg);
+                let coverHtml = cUrl ? \`<img src="\${cUrl}" loading="lazy">\` : '<span style="color:#888;font-size:10px;">NO COVER</span>';
+                
+                let tagsStr = s.library || "";
+                if (s.metadata && s.metadata.tags && s.metadata.tags.length > 0) {
+                    tagsStr += " • " + s.metadata.tags[0];
+                }
+
+                card.innerHTML = \`
+                    <div class="bookshelf-cover">\${coverHtml}</div>
+                    <div class="card-info">
+                        <div class="card-title" title="\${title}">\${title}</div>
+                        \${alias ? \`<div class="card-alias" title="\${alias}">\${alias}</div>\` : ''}
+                        <div class="card-meta">\${s.books.length} book(s)</div>
+                        <div class="card-badge" title="\${tagsStr}">\${tagsStr || 'Uncategorized'}</div>
+                    </div>
+                \`;
+                grid.appendChild(card);
+            });
+        }
+
+        function showBooksBySeriesId(id, pushState = true) {
+            const s = libraryData.find(x => x.id === id);
+            if (!s) return;
+            
+            if (pushState) {
+                history.pushState({view: 'series', id: id}, '', '?series=' + encodeURIComponent(id));
+            }
+            
+            document.getElementById('series-view').style.display = 'none';
+            document.getElementById('books-view').style.display = 'block';
+            
+            const getFirstStr = (keys) => {
+                if (s.metadata) {
+                    for (let k of keys) {
+                        if (s.metadata[k]) return String(s.metadata[k]);
+                    }
+                }
+                for (let b of s.books) {
+                    if (b.metadata) {
+                        for (let k of keys) {
+                            if (b.metadata[k]) return String(b.metadata[k]);
+                        }
+                    }
+                }
+                return "";
+            };
+            const getMergedArr = (keys) => {
+                let set = new Set();
+                if (s.metadata) {
+                    for (let k of keys) {
+                        let v = s.metadata[k];
+                        if (v) {
+                            if (Array.isArray(v)) v.forEach(x => set.add(String(x).trim()));
+                            else if (typeof v === "string") v.split(",").map(x => x.trim()).forEach(x => set.add(x));
+                        }
+                    }
+                }
+                for (let b of s.books) {
+                    if (b.metadata) {
+                        for (let k of keys) {
+                            let v = b.metadata[k];
+                            if (v) {
+                                if (Array.isArray(v)) v.forEach(x => set.add(String(x).trim()));
+                                else if (typeof v === "string") v.split(",").map(x => x.trim()).forEach(x => set.add(x));
+                            }
+                        }
+                    }
+                }
+                return Array.from(set).filter(x => x);
+            };
+
+            let summary = getFirstStr(["summary", "description"]);
+            let publisher = getFirstStr(["publisher", "publishers"]);
+            let ageRating = getFirstStr(["age rating", "agerating"]);
+            let status = getFirstStr(["status", "publication status"]);
+            let rd = getFirstStr(["release date", "publication date", "year", "date"]);
+            let releaseDate = rd;
+            if (rd) {
+                let ym = rd.match(/\b(19|20)\d{2}\b/);
+                releaseDate = ym ? ym[0] : rd;
+            }
+            let writers = getMergedArr(["writers", "writer", "creators", "creator", "author", "authors"]);
+            let genres = getMergedArr(["genres", "genre", "subjects", "subject"]);
+            let tags = getMergedArr(["tags", "tag"]);
+            let aliases = [];
+            if (s.metadata && s.metadata.aliases) {
+                let a = s.metadata.aliases;
+                if (Array.isArray(a)) aliases = a.map(x => String(x).trim()).filter(x => x);
+                else if (typeof a === "string") aliases = a.split(",").map(x => x.trim()).filter(x => x);
+            }
+
+            let displayTitle = s.metadata && s.metadata.title ? String(s.metadata.title) : s.name;
+            document.getElementById('books-title').innerText = displayTitle;
+
+            const headerInfo = document.getElementById('series-header-info');
+            headerInfo.innerHTML = '';
+
+            const coverBox = document.createElement('div');
+            coverBox.style.cssText = "width:160px;flex-shrink:0;border-radius:8px;overflow:hidden;background:var(--background-modifier-active-hover);aspect-ratio:2/3;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,0.1);";
+            let coverUrl = getCoverUrl(s.coverImg) || (s.books.length > 0 ? getCoverUrl(s.books[0].coverImg) : null);
+            if (coverUrl) {
+                coverBox.innerHTML = \`<img src="\${coverUrl}" style="width:100%;height:100%;object-fit:cover;">\`;
+            } else {
+                coverBox.innerHTML = \`<span style="font-weight:bold;color:var(--text-muted);">SERIES</span>\`;
+            }
+            headerInfo.appendChild(coverBox);
+
+            const infoBox = document.createElement('div');
+            infoBox.style.cssText = "flex:1;min-width:250px;display:flex;flex-direction:column;gap:12px;";
+
+            infoBox.innerHTML += \`<h1 style="margin:0;font-size:28px;font-weight:800;line-height:1.2;color:var(--text-normal);">\${displayTitle}</h1>\`;
+
+            if (aliases.length > 0) {
+                infoBox.innerHTML += \`<div style="font-size:14px;color:var(--text-muted);font-weight:600;margin-top:-8px;">\${aliases.join(" • ")}</div>\`;
+            }
+
+            let metaHtml = \`<div style="display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--text-muted);">\`;
+            const addMeta = (label, value) => {
+                if (!value || (Array.isArray(value) && value.length === 0)) return;
+                const text = Array.isArray(value) ? value.join(", ") : value;
+                metaHtml += \`<div><strong style="color:var(--text-normal);">\${label}:</strong> \${text}</div>\`;
+            };
+            addMeta("Writers", writers);
+            addMeta("Publisher", publisher);
+            addMeta("Release Year", releaseDate);
+            addMeta("Status", status);
+            addMeta("Age Rating", ageRating);
+            addMeta("Genres", genres);
+            addMeta("Tags", tags);
+            metaHtml += \`</div>\`;
+            infoBox.innerHTML += metaHtml;
+
+            if (summary) {
+                infoBox.innerHTML += \`<div style="margin-top:4px;font-size:14px;line-height:1.6;color:var(--text-normal);max-height:140px;overflow-y:auto;padding-right:8px;border-left:3px solid var(--interactive-accent);padding-left:12px;background:var(--background-secondary);padding-top:8px;padding-bottom:8px;border-radius:0 8px 8px 0;">\${summary}</div>\`;
+            }
+
+            let pathHtml = \`<div style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+                <div style="flex: 1; padding: 4px 8px; background: var(--background-secondary); border-radius: 4px; font-family: monospace; font-size: 11px; color: var(--text-muted); word-break: break-all; border: 1px solid var(--background-modifier-border); user-select: all;">\${s.id}</div>
+            </div>\`;
+            infoBox.innerHTML += pathHtml;
+
+            headerInfo.appendChild(infoBox);
+
+            const countRow = document.createElement('div');
+            countRow.style.cssText = "width: 100%; border-top: 1px solid var(--background-modifier-border); border-bottom: 1px solid var(--background-modifier-border); padding: 12px 0; margin-bottom: 16px; font-weight: 600; font-size: 14px; color: var(--text-normal);";
+            countRow.innerText = \`\${s.books.length} book(s)\`;
+            headerInfo.appendChild(countRow);
+            
+            const grid = document.getElementById('books-grid');
+            grid.innerHTML = '';
+            
+            s.books.forEach(b => {
+                const card = document.createElement('div');
+                card.className = 'bookshelf-card';
+                card.style.cursor = 'default';
+                
+                const title = (b.metadata && b.metadata.title) ? b.metadata.title : b.basename;
+                const cUrl = getCoverUrl(b.coverImg) || getCoverUrl(s.coverImg);
+                let coverHtml = cUrl ? \`<img src="\${cUrl}" loading="lazy">\` : \`<span style="color:#888;font-size:10px;">\${b.extension.toUpperCase()}</span>\`;
+
+                card.innerHTML = \`
+                    <div class="bookshelf-cover">\${coverHtml}</div>
+                    <div class="card-info">
+                        <div class="card-title" title="\${title}">\${title}</div>
+                        <div class="card-badge" style="margin-top:5px; margin-bottom:10px;">\${b.extension}</div>
+                        <div style="margin-top: auto;">
+                            <a class="download-btn" href="/api/file?path=\${encodeURIComponent(b.path)}" target="_blank" style="display:block;width:calc(100% - 24px);">Download / Open</a>
+                        </div>
+                    </div>
+                \`;
+                grid.appendChild(card);
+            });
+            window.scrollTo(0,0);
+        }
+
+        function showSeries(pushState = true) {
+            document.getElementById('series-view').style.display = 'block';
+            document.getElementById('books-view').style.display = 'none';
+            if (pushState) {
+                history.pushState({view: 'home'}, '', '/');
+            }
+        }
+
+        // Bind events
+        document.getElementById('search-series').addEventListener('input', applyFilters);
+        document.getElementById('search-writer').addEventListener('input', applyFilters);
+        document.getElementById('status-filter').addEventListener('change', applyFilters);
+        document.getElementById('sort-select').addEventListener('change', applyFilters);
+
+        window.addEventListener('popstate', (e) => {
+            if (e.state && e.state.view === 'series') {
+                showBooksBySeriesId(e.state.id, false);
+            } else {
+                showSeries(false);
+            }
+        });
+        
+        const initialParams = new URLSearchParams(window.location.search);
+        const initialSeries = initialParams.get('series');
+        if (initialSeries) {
+            history.replaceState({view: 'series', id: initialSeries}, '', '?series=' + encodeURIComponent(initialSeries));
+        } else {
+            history.replaceState({view: 'home'}, '', '/');
+        }
+
+        loadData();
+    </script>
+</body>
+</html>`;
     }
 }
 
