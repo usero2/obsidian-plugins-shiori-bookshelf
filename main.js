@@ -3286,19 +3286,21 @@ class BookshelfPlugin extends Plugin {
     }
 
     async extractPdfCover(file) {
-        if (!window.pdfjsLib && typeof loadPdfJs === "function") {
+        let pdfjs = window.pdfjsLib;
+        if (!pdfjs && typeof loadPdfJs === "function") {
             try {
-                await loadPdfJs();
+                pdfjs = await loadPdfJs();
+                window.pdfjsLib = pdfjs;
             } catch (e) {
                 console.error("Failed to load PDF.js", e);
             }
         }
-        if (!window.pdfjsLib) return null;
+        if (!pdfjs) return null;
         try {
             const url = this.app.vault.adapter.getResourcePath(file.path);
             let pdf;
             try {
-                pdf = await window.pdfjsLib.getDocument({
+                pdf = await pdfjs.getDocument({
                     url: url,
                     disableAutoFetch: true,
                     disableStream: false
@@ -3306,7 +3308,7 @@ class BookshelfPlugin extends Plugin {
             } catch (urlError) {
                 console.warn("PDF URL fetch failed, falling back to readBinary", urlError);
                 const data = await this.app.vault.readBinary(file);
-                pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(data) }).promise;
+                pdf = await pdfjs.getDocument({ data: new Uint8Array(data) }).promise;
             }
             const page = await pdf.getPage(1);
             
@@ -3324,12 +3326,19 @@ class BookshelfPlugin extends Plugin {
             
             return new Promise((resolve) => {
                 canvas.toBlob(async (blob) => {
+                    let buffer = null;
                     if (blob) {
-                        const buffer = await blob.arrayBuffer();
-                        resolve(buffer);
-                    } else {
-                        resolve(null);
+                        buffer = await blob.arrayBuffer();
                     }
+                    try {
+                        canvas.width = 0;
+                        canvas.height = 0;
+                        await page.cleanup();
+                        await pdf.destroy();
+                    } catch (cleanupError) {
+                        console.error("PDF cleanup error", cleanupError);
+                    }
+                    resolve(buffer);
                 }, "image/jpeg", 0.8);
             });
         } catch (e) {
@@ -3577,13 +3586,15 @@ class BookshelfPlugin extends Plugin {
         let coverData = null;
         let coverExt = "jpg";
         
-        if (bookFile.extension === "pdf") {
+        let fileExt = bookFile.extension.toLowerCase();
+        
+        if (fileExt === "pdf") {
             coverData = await this.extractPdfCover(bookFile);
             coverExt = "jpg";
-        } else if (bookFile.extension === "epub") {
+        } else if (fileExt === "epub") {
             coverData = await this.extractEpubCover(bookFile);
             coverExt = "jpg"; 
-        } else if (bookFile.extension === "cbz" || bookFile.extension === "zip") {
+        } else if (fileExt === "cbz" || fileExt === "zip") {
             let res = await this.extractCbzCover(bookFile);
             if (res) {
                 coverData = res.data;
@@ -3652,8 +3663,10 @@ class BookshelfPlugin extends Plugin {
                     progressNotice.hide();
                     progressNotice = new Notice(msg, 0);
                 }
-                await new Promise(r => setTimeout(r, 1));
             }
+            
+            // Yield event loop every book to prevent Out Of Memory crash
+            await new Promise(r => setTimeout(r, 10));
             
             let existingCover = book.metadata.cover;
             if (existingCover) {
@@ -3699,8 +3712,10 @@ class BookshelfPlugin extends Plugin {
                     progressNotice.hide();
                     progressNotice = new Notice(msg, 0);
                 }
-                await new Promise(r => setTimeout(r, 1));
             }
+            
+            // Yield event loop every book to prevent Out Of Memory crash
+            await new Promise(r => setTimeout(r, 10));
             
             let existingCover = book.metadata.cover;
             if (existingCover) {
@@ -3755,8 +3770,10 @@ class BookshelfPlugin extends Plugin {
                     progressNotice.hide();
                     progressNotice = new Notice(msg, 0);
                 }
-                await new Promise(r => setTimeout(r, 1));
             }
+            
+            // Yield event loop every book to prevent Out Of Memory crash
+            await new Promise(r => setTimeout(r, 10));
             
             if (!force) {
                 let existingCover = book.metadata.cover;
