@@ -85,6 +85,12 @@ For detailed, step-by-step instructions on how to use specific features, please 
 - **WebApp Responsive Header:** Improved the layout of the WebApp header on small screens (mobile/tablet), ensuring the title, search inputs, and Advance Filter button stack gracefully without overlapping.
 - **Server Access Links:** Added dynamic server access links in the plugin settings (under the Web Server tab) that display your `localhost` and local network IP addresses, making it easy to open the WebApp on other devices like phones or tablets.
 
+### v1.0.5
+- **Scan Progress Indicator**: Added a visual progress notice when scanning folders or series for missing covers. It now clearly shows how many books have been processed (e.g. `Scanning 20/400 books... Extracted: 5`) and updates in real-time, preventing the app from hanging during large scans.
+- **Force Regenerate Cover**: Added a new "Force Regenerate Cover" option to both Book and Series right-click context menus. This allows you to forcibly extract and overwrite covers even if a `_cover.jpg` already exists.
+- **Smart Cover Extraction**: The regular cover extraction logic is now smarter! If you trigger a "Regenerate Cover" and a cover image already exists in the folder, it will instantly link it to the book's metadata without redundantly re-extracting it from the archive, saving significant time.
+- **Faster PDF Cover Extraction**: Massively improved the performance of extracting covers from PDF files. Instead of loading the entire PDF file into memory, Shiori Bookshelf now efficiently streams only the required data chunks needed to render the very first page via HTTP Range Requests, saving a huge amount of memory and time.
+
 ## ❤️ Support & Donate
 
 If this plugin has improved your Obsidian workflow, saved you time, or you just want to support its continued development, please consider donating! 
