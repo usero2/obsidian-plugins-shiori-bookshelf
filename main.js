@@ -2604,7 +2604,43 @@ When you use Force Rename on a book file, the plugin does more than just rename 
                     } else {
                         this.plugin.webServer.stop();
                     }
+                    if (typeof updateLinks === 'function') updateLinks();
                 }));
+
+        const linksDiv = webServerContainer.createEl("div", { attr: { style: "padding: 18px 0; font-size: 0.9em; color: var(--text-muted);" } });
+        
+        const updateLinks = () => {
+            linksDiv.innerHTML = '';
+            
+            if (!this.plugin.settings.enableWebServer) return;
+            
+            let activePort = this.plugin.settings.webServerPort || 7070;
+            const srv = this.plugin.webServer ? this.plugin.webServer.server : null;
+            if (srv && srv.address && srv.address()) {
+                activePort = srv.address().port;
+            }
+            
+            linksDiv.createEl("strong", { text: "Server Access Links:" });
+            
+            const createLink = (url) => {
+                const div = linksDiv.createEl("div", { attr: { style: "margin-top: 6px;" } });
+                div.createEl("a", { text: url, href: url });
+            };
+            
+            createLink('http://localhost:' + activePort);
+            
+            try {
+                const os = require('os');
+                const ips = os.networkInterfaces();
+                for (const name of Object.keys(ips)) {
+                    for (const iface of ips[name]) {
+                        if (iface.family === 'IPv4' && !iface.internal) {
+                            createLink('http://' + iface.address + ':' + activePort);
+                        }
+                    }
+                }
+            } catch(e) {}
+        };
 
         new Setting(webServerContainer)
             .setName("Web Server Port")
@@ -2615,10 +2651,14 @@ When you use Force Rename on a book file, the plugin does more than just rename 
                 .onChange(async (value) => {
                     this.plugin.settings.webServerPort = parseInt(value) || 7070;
                     await this.plugin.saveSettings();
-                    if (this.plugin.settings.enableWebServer) {
-                        this.plugin.webServer.start(); // restarts with new port
-                    }
+                    updateLinks();
                 }));
+
+        // Render initially
+        updateLinks();
+        
+        // Ensure links are at the bottom of the container
+        webServerContainer.appendChild(linksDiv);
     }
 }
 
@@ -3710,23 +3750,65 @@ class BookshelfServer {
                             res.writeHead(404).end();
                         }
                     } else if (url.pathname === '/api/file') {
-                        const p = url.searchParams.get('path');
+                        const b64 = url.searchParams.get('b64');
+                        const p = b64 ? Buffer.from(b64, 'base64').toString('utf-8') : url.searchParams.get('path');
                         if (!p) return res.writeHead(400).end();
                         const absPath = basePath ? path.join(basePath, p) : "";
                         if (absPath && fs.existsSync(absPath)) {
                             const stat = fs.statSync(absPath);
                             const ext = path.extname(absPath).toLowerCase();
                             let ct = 'application/octet-stream';
-                            if (ext === '.pdf') ct = 'application/pdf';
-                            if (ext === '.epub') ct = 'application/epub+zip';
-                            if (ext === '.cbz') ct = 'application/x-cbz';
+                            let filename = encodeURIComponent(path.basename(absPath));
                             
-                            res.writeHead(200, { 
-                                'Content-Type': ct,
-                                'Content-Length': stat.size,
-                                'Content-Disposition': `inline; filename="${encodeURIComponent(path.basename(absPath))}"`
-                            });
-                            fs.createReadStream(absPath).pipe(res);
+                            if (ext === '.pdf') {
+                                ct = 'text/plain'; // Bypasses IDM!
+                                filename = 'document.txt'; 
+                            } else if (ext === '.epub') {
+                                ct = 'application/epub+zip';
+                            } else if (ext === '.cbz') {
+                                ct = 'application/x-cbz';
+                            }
+                            
+                            const range = req.headers.range;
+                            if (range) {
+                                const parts = range.replace(/bytes=/, "").split("-");
+                                const start = parseInt(parts[0], 10);
+                                const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+                                const chunksize = (end - start) + 1;
+                                
+                                res.writeHead(206, {
+                                    'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+                                    'Accept-Ranges': 'bytes',
+                                    'Content-Length': chunksize,
+                                    'Content-Type': ct,
+                                    'Access-Control-Allow-Origin': '*',
+                                    'Access-Control-Expose-Headers': 'Content-Length, Content-Range'
+                                });
+                                
+                                if (req.method === 'HEAD') return res.end();
+                                
+                                const stream = fs.createReadStream(absPath, { start, end });
+                                stream.on('error', (err) => { console.error('Stream error:', err); res.end(); });
+                                stream.pipe(res);
+                            } else {
+                                res.writeHead(200, { 
+                                    'Content-Type': ct,
+                                    'Content-Length': stat.size,
+                                    'Accept-Ranges': 'bytes',
+                                    'Content-Disposition': `inline; filename="${filename}"`,
+                                    'Access-Control-Allow-Origin': '*',
+                                    'Access-Control-Expose-Headers': 'Content-Length, Accept-Ranges'
+                                });
+                                
+                                if (req.method === 'HEAD') return res.end();
+                                
+                                const stream = fs.createReadStream(absPath);
+                                stream.on('error', (err) => {
+                                    console.error('File stream error:', err);
+                                    res.end();
+                                });
+                                stream.pipe(res);
+                            }
                         } else {
                             res.writeHead(404).end();
                         }
@@ -3768,6 +3850,11 @@ class BookshelfServer {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Shiori Bookshelf</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.53/dist/zip.min.js"></script>
+<script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+</script>
 <style>
     :root {
         --background-primary: #1e1e1e;
@@ -3787,8 +3874,8 @@ class BookshelfServer {
     /* Header Bar */
     .bookshelf-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 10px; }
     .bookshelf-title { margin: 0; font-size: 1.5em; font-weight: bold; white-space: nowrap; }
-    .search-container { display: flex; gap: 10px; flex: 1; min-width: 250px; }
-    .bookshelf-search, .bookshelf-select { flex: 1; padding: 8px 12px; border-radius: 5px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); outline: none; }
+    .search-container { display: flex; flex-wrap: wrap; gap: 10px; flex: 1; min-width: 250px; }
+    .bookshelf-search, .bookshelf-select { flex: 1; min-width: 140px; padding: 8px 12px; border-radius: 5px; border: 1px solid var(--background-modifier-border); background: var(--background-primary); color: var(--text-normal); outline: none; box-sizing: border-box; }
     .bookshelf-search:focus, .bookshelf-select:focus { border-color: var(--interactive-accent); }
     .btn { padding: 8px 12px; border-radius: 5px; border: 1px solid var(--background-modifier-border); background: var(--interactive-normal); color: var(--text-normal); cursor: pointer; white-space: nowrap; font-size:14px; }
     .btn:hover { background: var(--interactive-hover); }
@@ -3822,6 +3909,24 @@ class BookshelfServer {
     .back-btn:hover { color: var(--text-normal); }
     .download-btn { display: inline-block; background: var(--interactive-accent); color: var(--text-on-accent); text-decoration: none; padding: 6px 12px; border-radius: 4px; font-size: 12px; margin-top: 10px; font-weight: bold; text-align: center; }
     .download-btn:hover { opacity: 0.9; }
+
+    /* Reader View */
+    #reader-view { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--background-primary); z-index: 1000; overflow-y: auto; }
+    .reader-header { position: sticky; top: 0; background: var(--background-secondary); padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--background-modifier-border); z-index: 10; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+    .reader-title { margin: 0; font-size: 16px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; margin-right: 20px; text-align: center; }
+    .reader-close-btn { background: var(--interactive-normal); color: var(--text-normal); border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    .reader-close-btn:hover { background: #ff4d4d; color: white; }
+    .reader-content { display: flex; flex-direction: column; align-items: center; padding: 20px; padding-bottom: 60px; min-height: 100vh; }
+    .reader-content img { max-width: 100%; height: auto; margin-bottom: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: block; border-radius: 4px; }
+    .reader-loading { margin-top: 50px; font-size: 18px; color: var(--text-muted); font-weight: bold; display: flex; align-items: center; gap: 10px; }
+    
+    @media (max-width: 700px) {
+        .bookshelf-title { flex: 1 1 100%; text-align: left; }
+        .bookshelf-header { flex-direction: column; align-items: stretch; }
+        .search-container { flex-direction: column; width: 100%; min-width: unset; }
+        .bookshelf-search, .bookshelf-select { width: 100%; min-width: unset; }
+        #adv-filter-btn { align-self: flex-end; }
+    }
 </style>
 </head>
 <body>
@@ -3875,6 +3980,16 @@ class BookshelfServer {
             </div>
             <div id="series-header-info" style="display:flex;gap:20px;margin-bottom:24px;align-items:flex-start;flex-wrap:wrap;"></div>
             <div class="bookshelf-grid" id="books-grid"></div>
+        </div>
+
+        <!-- Reader View -->
+        <div id="reader-view">
+            <div class="reader-header">
+                <button class="reader-close-btn" onclick="closeReader(false)">Close</button>
+                <h2 id="reader-title" class="reader-title">Loading...</h2>
+                <div style="width: 60px;"></div> <!-- spacer -->
+            </div>
+            <div id="reader-content" class="reader-content"></div>
         </div>
     </div>
 
@@ -4062,12 +4177,19 @@ class BookshelfServer {
                 const title = (b.metadata && b.metadata.title) ? b.metadata.title : b.basename;
                 const cUrl = getCoverUrl(b.coverImg) || getCoverUrl(b.series.coverImg);
                 let coverHtml = cUrl ? \`<img src="\${cUrl}" loading="lazy">\` : '<span style="color:#888;font-size:10px;">NO COVER</span>';
+                let ext = b.extension.toLowerCase();
+                let isReadable = (ext === 'cbz' || ext === 'zip' || ext === 'pdf' || ext === 'epub');
                 
                 card.innerHTML = \`
                     <div class="bookshelf-cover">\${coverHtml}</div>
                     <div class="card-info">
                         <div class="card-title" title="\${title}">\${title}</div>
-                        <div class="card-badge">\${b.extension}</div>
+                        <div class="card-details">
+                            \${isReadable ? \`<a class="btn btn-accent" style="display:block; width:100%; text-align:center; box-sizing:border-box; padding:6px 12px; font-weight:bold; margin-top:5px; margin-bottom:5px; text-decoration:none;" target="_blank" href="/?reader=1&url=\${encodeURIComponent('/api/file?b64=' + encodeURIComponent(btoa(unescape(encodeURIComponent(b.path)))))}&title=\${encodeURIComponent(title)}&ext=\${ext}" onclick="event.stopPropagation();">📖 Read Online</a>\` : ''}
+                            <div style="margin-top:auto;">
+                                <a class="download-btn" href="/api/file?path=\${encodeURIComponent(b.path)}" target="_blank" style="display:block;width:calc(100% - 24px);">Download / Open</a>
+                            </div>
+                        </div>
                     </div>
                 \`;
                 scroll.appendChild(card);
@@ -4358,20 +4480,382 @@ class BookshelfServer {
                 const title = (b.metadata && b.metadata.title) ? b.metadata.title : b.basename;
                 const cUrl = getCoverUrl(b.coverImg) || getCoverUrl(s.coverImg);
                 let coverHtml = cUrl ? \`<img src="\${cUrl}" loading="lazy">\` : \`<span style="color:#888;font-size:10px;">\${b.extension.toUpperCase()}</span>\`;
+                let ext = b.extension.toLowerCase();
+                let isReadable = (ext === 'cbz' || ext === 'zip' || ext === 'pdf' || ext === 'epub');
 
                 card.innerHTML = \`
                     <div class="bookshelf-cover">\${coverHtml}</div>
                     <div class="card-info">
                         <div class="card-title" title="\${title}">\${title}</div>
-                        <div class="card-badge" style="margin-top:5px; margin-bottom:10px;">\${b.extension}</div>
-                        <div style="margin-top: auto;">
-                            <a class="download-btn" href="/api/file?path=\${encodeURIComponent(b.path)}" target="_blank" style="display:block;width:calc(100% - 24px);">Download / Open</a>
+                        <div class="card-details">
+                            \${isReadable ? \`<a class="btn btn-accent" style="display:block; width:100%; text-align:center; box-sizing:border-box; padding:6px 12px; font-weight:bold; margin-top:5px; margin-bottom:5px; text-decoration:none;" target="_blank" href="/?reader=1&url=\${encodeURIComponent('/api/file?b64=' + encodeURIComponent(btoa(unescape(encodeURIComponent(b.path)))))}&title=\${encodeURIComponent(title)}&ext=\${ext}" onclick="event.stopPropagation();">📖 Read Online</a>\` : ''}
+                            <div style="margin-top:auto;">
+                                <a class="download-btn" href="/api/file?path=\${encodeURIComponent(b.path)}" target="_blank" style="display:block;width:calc(100% - 24px);">Download / Open</a>
+                            </div>
                         </div>
                     </div>
                 \`;
                 grid.appendChild(card);
             });
             window.scrollTo(0,0);
+        }
+
+        let activeObjectUrls = [];
+
+        async function openReader(url, title, ext, skipPushState = false) {
+            document.getElementById('reader-title').innerText = title;
+            document.getElementById('reader-content').innerHTML = '<div class="reader-loading" id="reader-status">Downloading file...</div>';
+            document.getElementById('reader-view').style.display = 'block';
+            
+            if (!skipPushState) {
+                history.pushState({view: 'reader'}, '', '#reader');
+            }
+            
+            try {
+                if (ext === 'pdf') {
+                    if (!window.pdfjsLib) throw new Error("PDF.js library failed to load");
+                    
+                    document.getElementById('reader-status').innerText = 'Initializing PDF reader...';
+                    
+                    let loadingTask;
+                    try {
+                        loadingTask = pdfjsLib.getDocument({
+                            url: url,
+                            disableAutoFetch: true, // Only fetch ranges as needed
+                            disableStream: false,
+                            cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/cmaps/',
+                            cMapPacked: true
+                        });
+                        
+                        loadingTask.onProgress = function(progress) {
+                            if (progress.total > 0) {
+                                const percent = Math.round((progress.loaded / progress.total) * 100);
+                                const mb = Math.round(progress.loaded / 1024 / 1024 * 10) / 10;
+                                document.getElementById('reader-status').innerText = 'Loading PDF structure... ' + percent + '% (' + mb + 'MB)';
+                            } else {
+                                const mb = Math.round(progress.loaded / 1024 / 1024 * 10) / 10;
+                                document.getElementById('reader-status').innerText = 'Loading PDF structure... (' + mb + 'MB)';
+                            }
+                        };
+                    } catch (e) {
+                        throw new Error('PDF Init Error: ' + e.message);
+                    }
+                    
+                    let pdf;
+                    try {
+                        pdf = await loadingTask.promise;
+                    } catch (e) {
+                        throw new Error('PDF Parse Error: ' + e.message);
+                    }
+                    
+                    const numPages = pdf.numPages;
+                    if (numPages === 0) throw new Error("PDF has no pages");
+                    
+                    document.getElementById('reader-content').innerHTML = '';
+                    
+                    const observer = new IntersectionObserver((entries) => {
+                        entries.forEach(entry => {
+                            if (entry.isIntersecting) {
+                                const container = entry.target;
+                                if (!container.dataset.rendered) {
+                                    container.dataset.rendered = "true";
+                                    const pageNum = parseInt(container.dataset.page);
+                                    
+                                    pdf.getPage(pageNum).then(page => {
+                                        const viewport = page.getViewport({scale: 1.5});
+                                        const canvas = document.createElement('canvas');
+                                        const ctx = canvas.getContext('2d');
+                                        canvas.height = viewport.height;
+                                        canvas.width = viewport.width;
+                                        canvas.style.width = '100%';
+                                        canvas.style.height = 'auto';
+                                        
+                                        const renderContext = {
+                                            canvasContext: ctx,
+                                            viewport: viewport
+                                        };
+                                        
+                                        page.render(renderContext).promise.then(() => {
+                                            container.innerHTML = '';
+                                            container.appendChild(canvas);
+                                        }).catch(err => {
+                                            container.innerHTML = \`<div style="color:#ff6b6b">Error rendering page \${pageNum}</div>\`;
+                                        });
+                                    });
+                                }
+                            }
+                        });
+                    }, { rootMargin: "1000px 0px" });
+                    
+                    for (let i = 1; i <= numPages; i++) {
+                        const container = document.createElement('div');
+                        container.className = 'pdf-page-container';
+                        container.dataset.page = i;
+                        container.style.width = '100%';
+                        container.style.maxWidth = '800px';
+                        container.style.aspectRatio = '1 / 1.4';
+                        container.style.background = '#fff';
+                        container.style.marginBottom = '10px';
+                        container.style.display = 'flex';
+                        container.style.alignItems = 'center';
+                        container.style.justifyContent = 'center';
+                        container.style.color = '#888';
+                        container.innerHTML = 'Loading page ' + i + '...';
+                        
+                        document.getElementById('reader-content').appendChild(container);
+                        observer.observe(container);
+                    }
+                    
+                    window._pdfObserver = observer;
+                } else if (ext === 'epub') {
+                    if (!window.zip) throw new Error("zip.js library failed to load");
+                    
+                    document.getElementById('reader-status').innerText = 'Downloading EPUB...';
+                    
+                    const container = document.getElementById('reader-content');
+                    container.style.minHeight = '0';
+                    container.style.height = 'auto'; // Let it grow naturally
+                    container.style.display = 'block';
+                    container.style.padding = '20px';
+                    container.style.maxWidth = '800px';
+                    container.style.margin = '0 auto';
+                    container.style.color = '#eee';
+                    container.style.fontSize = '18px';
+                    container.style.lineHeight = '1.6';
+                    
+                    document.body.style.overflow = ''; // Native scroll!
+                    
+                    const xhr = new XMLHttpRequest();
+                    xhr.open('GET', url, true);
+                    xhr.responseType = 'arraybuffer';
+                    
+                    xhr.onprogress = function(e) {
+                        if (e.lengthComputable) {
+                            const percent = Math.round((e.loaded / e.total) * 100);
+                            const mb = Math.round(e.loaded / 1024 / 1024 * 10) / 10;
+                            document.getElementById('reader-status').innerText = 'Downloading EPUB... ' + percent + '% (' + mb + 'MB)';
+                        }
+                    };
+                    
+                    xhr.onload = async function() {
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            try {
+                                document.getElementById('reader-status').innerText = 'Parsing EPUB...';
+                                const zipReader = new zip.ZipReader(new zip.Uint8ArrayReader(new Uint8Array(xhr.response)));
+                                const entries = await zipReader.getEntries();
+                                
+                                function resolvePath(basePath, relativePath) {
+                                    const stack = basePath.split('/');
+                                    stack.pop(); 
+                                    const parts = relativePath.split('/');
+                                    for (let part of parts) {
+                                        if (part === '.') continue;
+                                        if (part === '..') stack.pop();
+                                        else stack.push(part);
+                                    }
+                                    return stack.join('/');
+                                }
+                                
+                                const containerEntry = entries.find(e => e.filename === 'META-INF/container.xml');
+                                if (!containerEntry) throw new Error("Missing META-INF/container.xml");
+                                const containerXml = await containerEntry.getData(new zip.TextWriter());
+                                const parser = new DOMParser();
+                                const containerDoc = parser.parseFromString(containerXml, "text/xml");
+                                const opfPath = containerDoc.querySelector("rootfile").getAttribute("full-path");
+                                
+                                const opfEntry = entries.find(e => e.filename === opfPath);
+                                if (!opfEntry) throw new Error("Missing OPF file");
+                                const opfXml = await opfEntry.getData(new zip.TextWriter());
+                                const opfDoc = parser.parseFromString(opfXml, "text/xml");
+                                
+                                const manifestList = opfDoc.querySelectorAll("manifest > item");
+                                const manifest = {};
+                                manifestList.forEach(item => {
+                                    manifest[item.getAttribute("id")] = item.getAttribute("href");
+                                });
+                                
+                                const spineList = opfDoc.querySelectorAll("spine > itemref");
+                                const spinePaths = Array.from(spineList).map(itemref => {
+                                    const id = itemref.getAttribute("idref");
+                                    return resolvePath(opfPath, manifest[id]);
+                                });
+                                
+                                document.getElementById('reader-status').innerText = 'Extracting Images...';
+                                
+                                const imageEntries = entries.filter(e => e.filename.match(/\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i));
+                                const objectUrls = {}; 
+                                for (let imgEntry of imageEntries) {
+                                    const blob = await imgEntry.getData(new zip.BlobWriter());
+                                    const objUrl = URL.createObjectURL(blob);
+                                    objectUrls[decodeURIComponent(imgEntry.filename)] = objUrl;
+                                    activeObjectUrls.push(objUrl);
+                                }
+                                
+                                document.getElementById('reader-status').innerText = 'Rendering Chapters...';
+                                
+                                let fullHtml = '';
+                                for (let htmlPath of spinePaths) {
+                                    const htmlEntry = entries.find(e => e.filename === htmlPath || decodeURIComponent(e.filename) === decodeURIComponent(htmlPath));
+                                    if (!htmlEntry) continue;
+                                    
+                                    let htmlContent = await htmlEntry.getData(new zip.TextWriter());
+                                    const doc = parser.parseFromString(htmlContent, "text/html");
+                                    
+                                    // Fix images
+                                    const images = doc.querySelectorAll('img, image');
+                                    images.forEach(img => {
+                                        let src = img.getAttribute('src') || img.getAttribute('href') || img.getAttribute('xlink:href');
+                                        if (src) {
+                                            const absolutePath = decodeURIComponent(resolvePath(htmlPath, src));
+                                            if (objectUrls[absolutePath]) {
+                                                img.setAttribute('src', objectUrls[absolutePath]);
+                                                img.setAttribute('href', objectUrls[absolutePath]);
+                                                img.setAttribute('xlink:href', objectUrls[absolutePath]);
+                                            }
+                                        }
+                                    });
+                                    
+                                    // Strip styles to enforce dark mode
+                                    doc.querySelectorAll('style, link[rel="stylesheet"]').forEach(s => s.remove());
+                                    // Strip links
+                                    doc.querySelectorAll('a').forEach(a => a.removeAttribute('href'));
+                                    
+                                    fullHtml += '<div style="margin-bottom: 50px;">' + doc.body.innerHTML + '</div>';
+                                }
+                                
+                                document.getElementById('reader-content').innerHTML = fullHtml;
+                                
+                            } catch (err) {
+                                document.getElementById('reader-content').innerHTML = '<div style="color:#ff6b6b">EPUB parse error: ' + err.message + '</div>';
+                            }
+                        } else {
+                            document.getElementById('reader-content').innerHTML = '<div style="color:red">Failed to download EPUB</div>';
+                        }
+                    };
+                    
+                    xhr.onerror = function() {
+                        document.getElementById('reader-content').innerHTML = '<div style="color:red">Network error downloading EPUB</div>';
+                    };
+                    
+                    xhr.send();
+                } else {
+                    if (!window.zip) throw new Error("zip.js library failed to load");
+                    
+                    document.getElementById('reader-status').innerText = 'Initializing CBZ structure...';
+                    
+                    const zipReader = new zip.ZipReader(new zip.HttpReader(url));
+                    const entries = await zipReader.getEntries({
+                        onprogress: function(loaded, total) {
+                            if (total > 0) {
+                                const percent = Math.round((loaded / total) * 100);
+                                const mb = Math.round(loaded / 1024 / 1024 * 10) / 10;
+                                document.getElementById('reader-status').innerText = 'Initializing CBZ structure... ' + percent + '% (' + mb + 'MB)';
+                            } else {
+                                const mb = Math.round(loaded / 1024 / 1024 * 10) / 10;
+                                document.getElementById('reader-status').innerText = 'Initializing CBZ structure... (' + mb + 'MB)';
+                            }
+                        }
+                    });
+                    
+                    const files = entries.filter(e => {
+                        const l = e.filename.toLowerCase();
+                        return !e.directory && (l.endsWith('.jpg') || l.endsWith('.jpeg') || l.endsWith('.png') || l.endsWith('.webp') || l.endsWith('.gif'));
+                    }).sort((a, b) => a.filename.localeCompare(b.filename, undefined, {numeric: true, sensitivity: 'base'}));
+                    
+                    if (files.length === 0) {
+                        throw new Error("No images found in the archive");
+                    }
+                    
+                    document.getElementById('reader-content').innerHTML = '';
+                    
+                    const observer = new IntersectionObserver((entriesObs) => {
+                        entriesObs.forEach(entry => {
+                            if (entry.isIntersecting) {
+                                const container = entry.target;
+                                if (!container.dataset.rendered) {
+                                    container.dataset.rendered = "true";
+                                    const index = parseInt(container.dataset.index);
+                                    const zipEntry = files[index];
+                                    
+                                    zipEntry.getData(new zip.BlobWriter()).then(blob => {
+                                        const objUrl = URL.createObjectURL(blob);
+                                        activeObjectUrls.push(objUrl);
+                                        
+                                        const img = document.createElement('img');
+                                        img.src = objUrl;
+                                        img.style.maxWidth = '100%';
+                                        img.style.height = 'auto';
+                                        img.style.display = 'block';
+                                        
+                                        container.innerHTML = '';
+                                        container.appendChild(img);
+                                    }).catch(err => {
+                                        container.innerHTML = '<div style="color:#ff6b6b">Error loading image ' + (index + 1) + '</div>';
+                                    });
+                                }
+                            }
+                        });
+                    }, { rootMargin: "1000px 0px" });
+                    
+                    for (let i = 0; i < files.length; i++) {
+                        const container = document.createElement('div');
+                        container.className = 'cbz-page-container';
+                        container.dataset.index = i;
+                        container.style.width = '100%';
+                        container.style.maxWidth = '800px';
+                        container.style.aspectRatio = '1 / 1.4';
+                        container.style.background = '#fff';
+                        container.style.marginBottom = '10px';
+                        container.style.display = 'flex';
+                        container.style.alignItems = 'center';
+                        container.style.justifyContent = 'center';
+                        container.style.color = '#888';
+                        container.innerHTML = 'Loading image ' + (i + 1) + '...';
+                        
+                        document.getElementById('reader-content').appendChild(container);
+                        observer.observe(container);
+                    }
+                    
+                    window._cbzObserver = observer;
+                }
+            } catch (err) {
+                document.getElementById('reader-content').innerHTML = '<div class="reader-loading" style="color:#ff6b6b">Error: ' + err.message + '</div>';
+            }
+        }
+
+        function closeReader(fromPopState = false) {
+            document.getElementById('reader-view').style.display = 'none';
+            activeObjectUrls.forEach(url => URL.revokeObjectURL(url));
+            activeObjectUrls = [];
+            if (window._pdfObserver) {
+                window._pdfObserver.disconnect();
+                window._pdfObserver = null;
+            }
+            if (window._cbzObserver) {
+                window._cbzObserver.disconnect();
+                window._cbzObserver = null;
+            }
+            const container = document.getElementById('reader-content');
+            container.innerHTML = '';
+            container.style.minHeight = '';
+            container.style.height = '';
+            container.style.display = 'flex';
+            container.style.padding = '20px';
+            container.style.maxWidth = '';
+            container.style.margin = '';
+            container.style.color = '';
+            container.style.fontSize = '';
+            container.style.lineHeight = '';
+            
+            // Restore body scroll
+            document.body.style.overflow = '';
+            
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('reader') === '1') {
+                window.close();
+            } else if (!fromPopState) {
+                history.back();
+            }
         }
 
         function showSeries(pushState = true) {
@@ -4398,13 +4882,24 @@ class BookshelfServer {
         
         const initialParams = new URLSearchParams(window.location.search);
         const initialSeries = initialParams.get('series');
-        if (initialSeries) {
+        const isReader = initialParams.get('reader') === '1';
+        
+        if (isReader) {
+            document.getElementById('series-view').style.display = 'none';
+            document.getElementById('books-view').style.display = 'none';
+            const rUrl = initialParams.get('url');
+            const rTitle = initialParams.get('title') || '';
+            const rExt = initialParams.get('ext') || '';
+            if (rUrl) openReader(rUrl, rTitle, rExt, true);
+        } else if (initialSeries) {
             history.replaceState({view: 'series', id: initialSeries}, '', '?series=' + encodeURIComponent(initialSeries));
         } else {
             history.replaceState({view: 'home'}, '', '/');
         }
 
-        loadData();
+        if (!isReader) {
+            loadData();
+        }
     </script>
 </body>
 </html>`;

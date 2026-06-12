@@ -71,6 +71,11 @@ For detailed, step-by-step instructions on how to use specific features, please 
 - **WebApp Advance Filters:** Brought the "Advance Filter" functionality to the WebApp! You can now easily filter your entire library by Libraries, Genres, and Tags directly from your browser, complete with a convenient Reset Filters button.
 - **WebApp Series Detail View:** Overhauled the WebApp series view. When clicking into a series, it now beautifully displays full series details including the cover image, writers, publisher, release year, status, genres, tags, and summary, matching the rich experience of the Obsidian app.
 - **WebApp URL Routing:** Implemented URL routing in the WebApp. Navigating into a series now updates the URL (e.g., `/?series=...`), allowing you to bookmark, share direct links to specific series, and use your browser's back/forward buttons seamlessly.
+- **WebApp EPUB Reader:** Added a built-in EPUB reader to the WebApp, allowing you to read `.epub` files seamlessly directly in your browser.
+- **WebApp CBZ Lazy Loading:** Optimized the CBZ reader to lazy-load images as you scroll. This drastically improves initial load times and memory usage for large CBZ files (e.g., 500MB+) and includes a visual progress indicator.
+- **WebApp Reader Navigation:** Fixed an issue where using the browser's back button while in the reader (PDF, CBZ, EPUB) would unexpectedly navigate away from the series view instead of just closing the reader.
+- **WebApp Responsive Header:** Improved the layout of the WebApp header on small screens (mobile/tablet), ensuring the title, search inputs, and Advance Filter button stack gracefully without overlapping.
+- **Server Access Links:** Added dynamic server access links in the plugin settings (under the Web Server tab) that display your `localhost` and local network IP addresses, making it easy to open the WebApp on other devices like phones or tablets.
 
 ## ❤️ Support & Donate
 
