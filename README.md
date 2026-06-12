@@ -7,25 +7,33 @@ Shiori Bookshelf is a powerful Obsidian plugin that transforms your vault into a
 
 ## ✨ Features
 
-- **Library Organization:**
-  - **Series Libraries:** Automatically group books into series based on their subfolders.
-  - **Single Libraries:** Manage standalone books independently, regardless of folder structure.
 - **Beautiful Bookshelf View:**
-  - A visually rich, grid-based gallery view displaying your books and series covers.
-  - Search by Title or Writer.
-  - Filter by reading status (*All*, *Read*, *Unread*, *Reading*).
+  - A visually rich, grid-based gallery view displaying your books and series covers natively inside Obsidian.
   - Automatically sorts series by the last updated book.
   - Lazy loading with infinite scroll (loads 50 items at a time for optimal performance).
-- **Automated Metadata & Covers:**
-  - Automatically extracts cover images (`_cover.jpg`) from your book files.
-  - Automatically generates a companion markdown (`.md`) file for each book to store reading status, writer, and title.
+- **Library Organization:**
+  - **Series Libraries:** Automatically group manga, comics, or light novels into a series based on subfolders.
+  - **Single Libraries:** Manage standalone books independently, regardless of folder structure.
+- **Built-In Readers:**
+  - Read your files natively without third-party apps!
+  - Full support for **PDF**, **EPUB**, and **CBZ/CBR** formats.
+  - CBZ reader features infinite-scroll lazy loading with progress tracking, allowing massive files to load instantly.
+- **WebApp Server (Remote Access):**
+  - Built-in local web server allows you to browse and read your Obsidian library from any web browser, phone, or tablet on your local network.
+  - Features a fully responsive mobile-friendly UI, URL routing, advanced filtering, and a built-in remote web reader for all supported formats.
+- **Automated Metadata & AI Integration:**
+  - Automatically extracts cover images (`_cover.jpg`) directly from your EPUB, CBZ, and PDF files.
+  - **Gemini AI Auto-Fill:** Connect your free Google Gemini API key to automatically fetch and fill rich metadata for your series (including Summary, Genres, Tags, Writers, Publisher, and Release Year) with a single click.
+- **Advanced Search & Filtering:**
+  - Search your library by Title, Writer, or File Name.
+  - Filter by reading status (*All*, *Read*, *Unread*, *Reading*).
+  - Use the **Advance Filter** to drill down by Libraries, specific Genres, or Tags.
 - **Context Menu Integration:**
-  - **Add to Libraries:** Quickly add folders to your Series or Single libraries via right-click.
-  - **Scan:** Manually trigger cover extraction for all books inside a folder.
-  - **Open Metadata file:** Quickly jump to the hidden `.md` metadata file of any book to edit its properties.
   - **Force Rename:** Bypass Obsidian's restrictive character limits to rename files using characters like `#`, `^`, `[`, `]`, `|`. Automatically syncs the new name to the companion metadata and cover files.
+  - **Scan:** Manually trigger cover extraction for all books inside a folder.
+  - **Add to Libraries:** Quickly add folders to your Series or Single libraries via right-click.
 - **Clean File Explorer:**
-  - Options in settings to automatically hide the extracted `_cover.jpg` and metadata `.md` files from your Obsidian file explorer to keep your workspace clutter-free.
+  - Options to automatically hide the extracted `_cover.jpg` and metadata `.md` files from your Obsidian file explorer to keep your workspace completely clutter-free.
 
 ## 🚀 Installation
 
