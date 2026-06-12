@@ -96,6 +96,11 @@ For detailed, step-by-step instructions on how to use specific features, please 
 - **Progress UI Fix**: Fixed a crash caused by the new progress notice on older Obsidian versions lacking the `setMessage` function.
 - **PDF Extraction Fix**: Fixed an issue where PDF cover extraction would fail and return 0 covers if the user had not explicitly opened a PDF document in their current session, by dynamically pre-loading Obsidian's built-in PDF.js library.
 
+### v1.0.7
+- **PDF Extraction Fix**: Fixed a bug where PDF cover extraction would fail if `loadPdfJs` was not globally available. The plugin now correctly imports the required API, ensuring reliable background PDF scanning.
+- **Series Scan Fix**: Resolved a silent crash that occurred when triggering a manual "Scan" or "Regenerate Cover" from the Series card context menu.
+- **Force Regenerate UI Fix**: Ensured the bookshelf UI remains fully responsive during long scan operations, and that "Force Regenerate Cover" directly updates the visual DOM without requiring a full page reload.
+
 ## ❤️ Support & Donate
 
 If this plugin has improved your Obsidian workflow, saved you time, or you just want to support its continued development, please consider donating! 
