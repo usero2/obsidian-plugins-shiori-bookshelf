@@ -4047,8 +4047,14 @@ class BookshelfServer {
                             const range = req.headers.range;
                             if (range) {
                                 const parts = range.replace(/bytes=/, "").split("-");
-                                const start = parseInt(parts[0], 10);
-                                const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+                                let start = parseInt(parts[0], 10);
+                                let end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+                                
+                                if (isNaN(start)) {
+                                    start = stat.size - end;
+                                    end = stat.size - 1;
+                                }
+                                
                                 const chunksize = (end - start) + 1;
                                 
                                 res.writeHead(206, {
@@ -4462,7 +4468,7 @@ class BookshelfServer {
                         <div class="card-details">
                             \${isReadable ? \`<a class="btn btn-accent" style="display:block; width:100%; text-align:center; box-sizing:border-box; padding:6px 12px; font-weight:bold; margin-top:5px; margin-bottom:5px; text-decoration:none;" target="_blank" href="/?reader=1&url=\${encodeURIComponent('/api/file?b64=' + encodeURIComponent(btoa(unescape(encodeURIComponent(b.path)))))}&title=\${encodeURIComponent(title)}&ext=\${ext}" onclick="event.stopPropagation();">📖 Read Online</a>\` : ''}
                             <div style="margin-top:auto;">
-                                <a class="download-btn" href="/api/file?path=\${encodeURIComponent(b.path)}" target="_blank" style="display:block;width:calc(100% - 24px);">Download / Open</a>
+                                <a class="download-btn" href="/api/file?path=\${encodeURIComponent(b.path)}" target="_blank" style="display:block;width:calc(100% - 24px);">Download</a>
                             </div>
                         </div>
                     </div>
@@ -4772,7 +4778,7 @@ class BookshelfServer {
                         <div class="card-details">
                             \${isReadable ? \`<a class="btn btn-accent" style="display:block; width:100%; text-align:center; box-sizing:border-box; padding:6px 12px; font-weight:bold; margin-top:5px; margin-bottom:5px; text-decoration:none;" target="_blank" href="/?reader=1&url=\${encodeURIComponent('/api/file?b64=' + encodeURIComponent(btoa(unescape(encodeURIComponent(b.path)))))}&title=\${encodeURIComponent(title)}&ext=\${ext}" onclick="event.stopPropagation();">📖 Read Online</a>\` : ''}
                             <div style="margin-top:auto;">
-                                <a class="download-btn" href="/api/file?path=\${encodeURIComponent(b.path)}" target="_blank" style="display:block;width:calc(100% - 24px);">Download / Open</a>
+                                <a class="download-btn" href="/api/file?path=\${encodeURIComponent(b.path)}" target="_blank" style="display:block;width:calc(100% - 24px);">Download</a>
                             </div>
                         </div>
                     </div>
