@@ -101,6 +101,12 @@ For detailed, step-by-step instructions on how to use specific features, please 
 - **Series Scan Fix**: Resolved a silent crash that occurred when triggering a manual "Scan" or "Regenerate Cover" from the Series card context menu.
 - **Force Regenerate UI Fix**: Ensured the bookshelf UI remains fully responsive during long scan operations, and that "Force Regenerate Cover" directly updates the visual DOM without requiring a full page reload.
 
+### v1.0.8
+- **WebApp Secure Authentication**: Added a built-in Basic Authentication system for the Web Server! You can now turn on the "Require Authentication" toggle in settings and configure a list of allowed users (`username:password`). This completely locks down the WebApp and its APIs, preventing unauthorized access on your local network.
+- **Instant PDF Streaming (WebApp)**: Fixed a major performance bug with the WebApp's PDF reader. The local server's HTTP Range Request headers have been overhauled. PDF.js will now instantly fetch the file's structure and render the first pages immediately, completely eliminating the need to wait for the entire PDF to download!
+- **WebApp Search Polish**: Fixed a UI issue where the "New Book Add" carousel would stay visible while using the search bar or advanced filters. It now hides itself intelligently when you are filtering your library.
+- **WebApp UI Tweak**: Renamed the "Download / Open" button to just "Download" for a cleaner look.
+
 ## ❤️ Support & Donate
 
 If this plugin has improved your Obsidian workflow, saved you time, or you just want to support its continued development, please consider donating! 
