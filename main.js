@@ -174,6 +174,10 @@ function attachBookContextMenu(element, book, plugin) {
                         let success = await plugin.extractCover(book.file, true);
                         if (success) {
                             new Notice("Cover regenerated!");
+                            const bsLeaves = plugin.app.workspace.getLeavesOfType("bookshelf-view");
+                            bsLeaves.forEach(l => l.view.renderBookshelf());
+                            const sdLeaves = plugin.app.workspace.getLeavesOfType("series-details-view");
+                            sdLeaves.forEach(l => l.view.renderDetails());
                         } else {
                             new Notice("Failed: Could not extract cover data.");
                         }
@@ -192,6 +196,10 @@ function attachBookContextMenu(element, book, plugin) {
                         let success = await plugin.extractCover(book.file);
                         if (success) {
                             new Notice("Cover regenerated!");
+                            const bsLeaves = plugin.app.workspace.getLeavesOfType("bookshelf-view");
+                            bsLeaves.forEach(l => l.view.renderBookshelf());
+                            const sdLeaves = plugin.app.workspace.getLeavesOfType("series-details-view");
+                            sdLeaves.forEach(l => l.view.renderDetails());
                         } else {
                             new Notice("Cover already exists or extraction failed.");
                         }
@@ -1078,14 +1086,26 @@ class SeriesDetailsView extends ItemView {
     }
 
     async onOpen() {
+        let lastRenderTime = 0;
+        let timeoutId = null;
         this.registerEvent(this.plugin.app.metadataCache.on("changed", () => {
-            if (this.plugin.activeScans > 0) return;
-            this.renderDetails();
+            const now = Date.now();
+            if (now - lastRenderTime > 2000) {
+                lastRenderTime = now;
+                this.renderDetails();
+            } else {
+                if (timeoutId) clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                    lastRenderTime = Date.now();
+                    this.renderDetails();
+                }, 2000);
+            }
         }));
     }
 
     renderDetails() {
         const container = this.containerEl.children[1];
+        const scrollPos = container.scrollTop;
         container.empty();
         container.style.userSelect = "text";
         container.style.webkitUserSelect = "text";
@@ -1583,6 +1603,8 @@ class SeriesDetailsView extends ItemView {
                 }
             }
         }
+        
+        setTimeout(() => { if (container) container.scrollTop = scrollPos; }, 0);
     }
 }
 
@@ -1598,17 +1620,49 @@ class BookshelfView extends ItemView {
 
     async onOpen() {
         this.renderBookshelf();
+        let lastRenderTime = 0;
+        let timeoutId = null;
         this.registerEvent(this.plugin.app.metadataCache.on("changed", () => {
-            if (this.plugin.activeScans > 0) return;
-            this.renderBookshelf();
+            const now = Date.now();
+            if (now - lastRenderTime > 2000) {
+                lastRenderTime = now;
+                this.updatePartial();
+            } else {
+                if (timeoutId) clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => {
+                    lastRenderTime = Date.now();
+                    this.updatePartial();
+                }, 2000);
+            }
         }));
+    }
+    
+    async updatePartial() {
+        const grid = this.containerEl.querySelector(".series-grid");
+        if (!grid) {
+            this.renderBookshelf();
+            return;
+        }
+        const data = this.plugin.getLibraryData();
+        const cards = grid.querySelectorAll(".bookshelf-card");
+        cards.forEach(card => {
+            const sid = card.dataset.seriesId;
+            if (sid) {
+                const s = data.series.find(x => x.id === sid);
+                if (s && card._updateContent) {
+                    card._updateContent(s);
+                }
+            }
+        });
     }
     
     async renderBookshelf() {
         const container = this.containerEl.children[1];
+        const scrollPos = container.scrollTop;
         container.empty();
         const data = this.plugin.getLibraryData();
         this.renderHome(container, data);
+        setTimeout(() => { if (container) container.scrollTop = scrollPos; }, 0);
     }
 
     renderHome(container, data) {
@@ -1854,85 +1908,91 @@ class BookshelfView extends ItemView {
 
             for (let series of seriesList) {
                 let card = seriesGrid.createDiv({ cls: "bookshelf-card" });
+                card.dataset.seriesId = series.id;
                 seriesCardElements.push({ series, card });
-                applyCardStyle(card);
 
-                let cover = card.createDiv({ cls: "bookshelf-cover" });
-                if (series.books.length > 0) {
-                    cover.dataset.seriesCoverPath = series.books[0].file.path;
-                }
-                applyCoverStyle(cover);
-                
-                let coverUrl = null;
-                if (series.books.length > 0) {
-                    coverUrl = getCoverUrl(this.plugin, series.coverImg, series.books[0].file.path);
-                }
-                
-                if (coverUrl) {
-                    let img = cover.createEl("img");
-                    img.src = coverUrl;
-                    img.style.width = "100%";
-                    img.style.height = "100%";
-                    img.style.objectFit = "cover";
-                } else {
-                    let fallback = cover.createEl("span", { text: "SERIES" });
-                    fallback.style.color = "var(--text-muted)";
-                    fallback.style.fontWeight = "bold";
-                }
+                card._updateContent = (s) => {
+                    card.empty();
+                    applyCardStyle(card);
 
-                // Distinct styling for Series cards
-                card.style.background = "var(--background-secondary-alt)";
-                card.style.border = "1px solid var(--background-modifier-border)";
-
-                let displayTitle = series.metadata && series.metadata.title ? String(series.metadata.title) : series.name;
-                let title = card.createEl("div", { text: displayTitle, cls: "bookshelf-item-title" });
-                title.style.fontWeight = "bold";
-                title.style.fontSize = "14px";
-                title.style.wordBreak = "break-word";
-                title.style.lineHeight = "1.2";
-                title.style.maxHeight = "2.4em";
-                title.style.overflow = "hidden";
-                title.style.textOverflow = "ellipsis";
-                title.style.display = "-webkit-box";
-                title.style.webkitLineClamp = "2";
-                title.style.webkitBoxOrient = "vertical";
-                
-                if (series.metadata && series.metadata.aliases) {
-                    let a = series.metadata.aliases;
-                    let arr = Array.isArray(a) ? a : (typeof a === "string" ? a.split(",") : []);
-                    let validAliases = arr.map(x => String(x).trim()).filter(x => x);
-                    if (validAliases.length > 0) {
-                        let aliasEl = card.createEl("div", { text: validAliases.join(", ") });
-                        aliasEl.style.fontSize = "11px";
-                        aliasEl.style.color = "var(--text-muted)";
-                        aliasEl.style.marginTop = "2px";
-                        aliasEl.style.whiteSpace = "nowrap";
-                        aliasEl.style.overflow = "hidden";
-                        aliasEl.style.textOverflow = "ellipsis";
+                    let cover = card.createDiv({ cls: "bookshelf-cover" });
+                    if (s.books.length > 0) {
+                        cover.dataset.seriesCoverPath = s.books[0].file.path;
                     }
-                }
-                
-                let count = card.createEl("div", { text: `${series.books.length} book(s)` });
-                count.style.fontSize = "12px";
-                count.style.color = "var(--text-muted)";
-                count.style.marginTop = "4px";
+                    applyCoverStyle(cover);
+                    
+                    let coverUrl = null;
+                    if (s.books.length > 0) {
+                        coverUrl = getCoverUrl(this.plugin, s.coverImg, s.books[0].file.path);
+                    }
+                    
+                    if (coverUrl) {
+                        let img = cover.createEl("img");
+                        img.src = coverUrl;
+                        img.style.width = "100%";
+                        img.style.height = "100%";
+                        img.style.objectFit = "cover";
+                    } else {
+                        let fallback = cover.createEl("span", { text: "SERIES" });
+                        fallback.style.color = "var(--text-muted)";
+                        fallback.style.fontWeight = "bold";
+                    }
 
-                let libBadge = card.createEl("div", { text: series.library });
-                libBadge.style.fontSize = "10px";
-                libBadge.style.color = "var(--text-faint)";
-                libBadge.style.marginTop = "auto";
-                libBadge.style.paddingTop = "8px";
+                    card.style.background = "var(--background-secondary-alt)";
+                    card.style.border = "1px solid var(--background-modifier-border)";
 
-                card.onclick = async () => {
-                    const leaf = this.plugin.app.workspace.getLeaf('tab');
-                    await leaf.setViewState({
-                        type: VIEW_TYPE_SERIES_DETAILS,
-                        active: true,
-                        state: { seriesId: series.id }
-                    });
+                    let displayTitle = s.metadata && s.metadata.title ? String(s.metadata.title) : s.name;
+                    let title = card.createEl("div", { text: displayTitle, cls: "bookshelf-item-title" });
+                    title.style.fontWeight = "bold";
+                    title.style.fontSize = "14px";
+                    title.style.wordBreak = "break-word";
+                    title.style.lineHeight = "1.2";
+                    title.style.maxHeight = "2.4em";
+                    title.style.overflow = "hidden";
+                    title.style.textOverflow = "ellipsis";
+                    title.style.display = "-webkit-box";
+                    title.style.webkitLineClamp = "2";
+                    title.style.webkitBoxOrient = "vertical";
+                    
+                    if (s.metadata && s.metadata.aliases) {
+                        let a = s.metadata.aliases;
+                        let arr = Array.isArray(a) ? a : (typeof a === "string" ? a.split(",") : []);
+                        let validAliases = arr.map(x => String(x).trim()).filter(x => x);
+                        if (validAliases.length > 0) {
+                            let aliasEl = card.createEl("div", { text: validAliases.join(", ") });
+                            aliasEl.style.fontSize = "11px";
+                            aliasEl.style.color = "var(--text-muted)";
+                            aliasEl.style.marginTop = "2px";
+                            aliasEl.style.whiteSpace = "nowrap";
+                            aliasEl.style.overflow = "hidden";
+                            aliasEl.style.textOverflow = "ellipsis";
+                        }
+                    }
+                    
+                    let count = card.createEl("div", { text: `${s.books.length} book(s)` });
+                    count.style.fontSize = "12px";
+                    count.style.color = "var(--text-muted)";
+                    count.style.marginTop = "4px";
+
+                    let libBadge = card.createEl("div", { text: s.library });
+                    libBadge.style.fontSize = "10px";
+                    libBadge.style.color = "var(--text-faint)";
+                    libBadge.style.marginTop = "auto";
+                    libBadge.style.paddingTop = "8px";
+
+                    card.onclick = async () => {
+                        const leaf = this.plugin.app.workspace.getLeaf('tab');
+                        await leaf.setViewState({
+                            type: VIEW_TYPE_SERIES_DETAILS,
+                            active: true,
+                            state: { seriesId: s.id }
+                        });
+                    };
+                    
+                    attachSeriesContextMenu(card, s, this.plugin);
                 };
                 
-                attachSeriesContextMenu(card, series, this.plugin);
+                card._updateContent(series);
             }
         };
 
@@ -3805,6 +3865,14 @@ class BookshelfPlugin extends Plugin {
         new Notice(`Finished scanning. Extracted ${extractedCount} covers out of ${total} books!`);
         } finally {
             this.activeScans = Math.max(0, (this.activeScans || 1) - 1);
+            if (this.activeScans === 0) {
+                setTimeout(() => {
+                    const bsLeaves = this.app.workspace.getLeavesOfType("bookshelf-view");
+                    bsLeaves.forEach(l => l.view.renderBookshelf());
+                    const sdLeaves = this.app.workspace.getLeavesOfType("series-details-view");
+                    sdLeaves.forEach(l => l.view.renderDetails());
+                }, 1500); // Wait for metadataCache to digest changes
+            }
         }
     }
 
@@ -3854,6 +3922,14 @@ class BookshelfPlugin extends Plugin {
         new Notice(`Finished scanning. Extracted ${extractedCount} covers for ${series.name}!`);
         } finally {
             this.activeScans = Math.max(0, (this.activeScans || 1) - 1);
+            if (this.activeScans === 0) {
+                setTimeout(() => {
+                    const bsLeaves = this.app.workspace.getLeavesOfType("bookshelf-view");
+                    bsLeaves.forEach(l => l.view.renderBookshelf());
+                    const sdLeaves = this.app.workspace.getLeavesOfType("series-details-view");
+                    sdLeaves.forEach(l => l.view.renderDetails());
+                }, 1500);
+            }
         }
     }
 
@@ -3908,11 +3984,14 @@ class BookshelfPlugin extends Plugin {
             new Notice(`Finished scanning. Extracted ${extractedCount} covers in ${folder.name}!`);
         } finally {
             this.activeScans = Math.max(0, (this.activeScans || 1) - 1);
-        }
-        
-        const leaves = this.app.workspace.getLeavesOfType("bookshelf-view");
-        if (leaves.length > 0) {
-            leaves[0].view.renderBookshelf();
+            if (this.activeScans === 0) {
+                setTimeout(() => {
+                    const bsLeaves = this.app.workspace.getLeavesOfType("bookshelf-view");
+                    bsLeaves.forEach(l => l.view.renderBookshelf());
+                    const sdLeaves = this.app.workspace.getLeavesOfType("series-details-view");
+                    sdLeaves.forEach(l => l.view.renderDetails());
+                }, 1500);
+            }
         }
     }
 }

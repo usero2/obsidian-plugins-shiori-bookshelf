@@ -16,7 +16,7 @@ node_modules
 
 # obsidian
 data.json
-.main_work_for_scan_without_open_pdf.js
+main_work_for_scan_without_open_pdf.js
 
 # Exclude macOS Finder (System Explorer) View States
 .DS_Store
