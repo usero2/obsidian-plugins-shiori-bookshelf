@@ -20,7 +20,9 @@ const DEFAULT_SETTINGS = {
     geminiApiKey: "",
     geminiModel: "gemini-1.5-flash",
     enableWebServer: false,
-    webServerPort: 7070
+    webServerPort: 7070,
+    enableWebAuth: false,
+    webAuthUsers: "admin:admin"
 };
 
 // --- Helper Functions ---
@@ -2431,12 +2433,7 @@ When you use Force Rename on a book file, the plugin does more than just rename 
         const activeStyle = "background: var(--interactive-accent); color: var(--text-on-accent);";
         const inactiveStyle = "background: transparent; color: var(--text-muted); box-shadow: none;";
 
-        btnGeneral.style.cssText = activeStyle;
-        btnWebServer.style.cssText = inactiveStyle;
-        btnHowTo.style.cssText = inactiveStyle;
-        btnRecommended.style.cssText = inactiveStyle;
-
-        const generalContainer = containerEl.createDiv();
+        this.activeTab = this.activeTab || 'general';        const generalContainer = containerEl.createDiv();
         
         const webServerContainer = containerEl.createDiv();
         webServerContainer.style.display = "none";
@@ -2452,6 +2449,7 @@ When you use Force Rename on a book file, the plugin does more than just rename 
         recommendedContainer.style.webkitUserSelect = "text";
 
         btnGeneral.onclick = () => {
+            this.activeTab = 'general';
             btnGeneral.style.cssText = activeStyle;
             btnWebServer.style.cssText = inactiveStyle;
             btnHowTo.style.cssText = inactiveStyle;
@@ -2463,6 +2461,7 @@ When you use Force Rename on a book file, the plugin does more than just rename 
         };
 
         btnWebServer.onclick = () => {
+            this.activeTab = 'webserver';
             btnWebServer.style.cssText = activeStyle;
             btnGeneral.style.cssText = inactiveStyle;
             btnHowTo.style.cssText = inactiveStyle;
@@ -2474,6 +2473,7 @@ When you use Force Rename on a book file, the plugin does more than just rename 
         };
 
         btnHowTo.onclick = () => {
+            this.activeTab = 'howto';
             btnHowTo.style.cssText = activeStyle;
             btnGeneral.style.cssText = inactiveStyle;
             btnWebServer.style.cssText = inactiveStyle;
@@ -2489,6 +2489,7 @@ When you use Force Rename on a book file, the plugin does more than just rename 
         };
 
         btnRecommended.onclick = () => {
+            this.activeTab = 'recommended';
             btnRecommended.style.cssText = activeStyle;
             btnGeneral.style.cssText = inactiveStyle;
             btnWebServer.style.cssText = inactiveStyle;
@@ -2502,6 +2503,11 @@ When you use Force Rename on a book file, the plugin does more than just rename 
                 this.recommendedRendered = true;
             }
         };
+
+        if (this.activeTab === 'webserver') btnWebServer.onclick();
+        else if (this.activeTab === 'howto') btnHowTo.onclick();
+        else if (this.activeTab === 'recommended') btnRecommended.onclick();
+        else btnGeneral.onclick();
         
         let desc = generalContainer.createEl("p", { text: "This plugin supports reading PDF, EPUB, and CBZ files." });
         desc.style.color = "var(--text-muted)";
@@ -2688,7 +2694,30 @@ When you use Force Rename on a book file, the plugin does more than just rename 
                     await this.plugin.saveSettings();
                     updateLinks();
                 }));
+        new Setting(webServerContainer)
+            .setName("Require Authentication")
+            .setDesc("Require a username and password to access the web server.")
+            .addToggle(toggle => toggle
+                .setValue(this.plugin.settings.enableWebAuth)
+                .onChange(async (value) => {
+                    this.plugin.settings.enableWebAuth = value;
+                    await this.plugin.saveSettings();
+                    this.display(); // Refresh to show/hide user list
+                }));
 
+        if (this.plugin.settings.enableWebAuth) {
+            new Setting(webServerContainer)
+                .setName("Web Server Users")
+                .setDesc("Enter users as 'username:password', one per line.")
+                .addTextArea(text => text
+                    .setPlaceholder("admin:admin\nuser:1234")
+                    .setValue(this.plugin.settings.webAuthUsers)
+                    .onChange(async (value) => {
+                        this.plugin.settings.webAuthUsers = value;
+                        await this.plugin.saveSettings();
+                    }))
+                .settingEl.querySelector('.setting-item-control').style.width = "100%";
+        }
         // Render initially
         updateLinks();
         
@@ -3910,6 +3939,27 @@ class BookshelfServer {
             this.server = http.createServer(async (req, res) => {
                 res.setHeader('Access-Control-Allow-Origin', '*');
                 
+                if (this.plugin.settings.enableWebAuth) {
+                    const auth = req.headers['authorization'];
+                    let authenticated = false;
+                    if (auth && auth.startsWith('Basic ')) {
+                        try {
+                            const b64 = auth.substring(6);
+                            const decoded = Buffer.from(b64, 'base64').toString('utf8');
+                            const users = this.plugin.settings.webAuthUsers ? this.plugin.settings.webAuthUsers.split('\n').map(u => u.trim()).filter(u => u) : [];
+                            if (users.includes(decoded)) {
+                                authenticated = true;
+                            }
+                        } catch(e) {}
+                    }
+                    if (!authenticated) {
+                        res.setHeader('WWW-Authenticate', 'Basic realm="Shiori Bookshelf"');
+                        res.writeHead(401, { 'Content-Type': 'text/plain' });
+                        res.end('Authentication required');
+                        return;
+                    }
+                }
+                
                 try {
                     const url = new URL(req.url, `http://localhost:${port}`);
                     const basePath = this.plugin.app.vault.adapter.getBasePath ? this.plugin.app.vault.adapter.getBasePath() : "";
@@ -4525,6 +4575,13 @@ class BookshelfServer {
             });
 
             document.getElementById('series-count').innerText = \`Series (\${filteredSeries.length})\`;
+            
+            const hasFilters = qSeries || qWriter || qStatus !== "Any Status" || includeLibraries.size > 0 || excludeLibraries.size > 0 || includeGenres.size > 0 || excludeGenres.size > 0 || includeTags.size > 0 || excludeTags.size > 0;
+            const newBooksContainer = document.getElementById('new-books-container');
+            if (newBooksContainer) {
+                newBooksContainer.style.display = hasFilters ? 'none' : 'block';
+            }
+
             renderSeriesGrid();
         }
 
