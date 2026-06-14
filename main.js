@@ -1964,12 +1964,13 @@ class BookshelfView extends ItemView {
         const seriesGrid = container.createDiv({ cls: "bookshelf-grid series-grid" });
         applyGridStyle(seriesGrid);
         
-        let seriesCardElements = [];
+        let matchedSeriesData = [];
 
-        const renderSeriesList = (seriesList) => {
-            seriesGrid.empty();
-            seriesCardElements = [];
-            if (seriesList.length === 0) {
+        const renderSeriesList = (seriesList, append = false) => {
+            if (!append) {
+                seriesGrid.empty();
+            }
+            if (seriesList.length === 0 && !append) {
                 seriesGrid.createEl("div", { text: "No series found. Check your library settings." });
                 return;
             }
@@ -1977,7 +1978,6 @@ class BookshelfView extends ItemView {
             for (let series of seriesList) {
                 let card = seriesGrid.createDiv({ cls: "bookshelf-card" });
                 card.dataset.seriesId = series.id;
-                seriesCardElements.push({ series, card });
 
                 card._updateContent = (s) => {
                     card.empty();
@@ -2060,21 +2060,25 @@ class BookshelfView extends ItemView {
                     attachSeriesContextMenu(card, s, this.plugin);
                 };
                 
+                card._lastBooksLen = series.books ? series.books.length : 0;
+                card._lastCoverImg = series.coverImg;
                 card._updateContent(series);
             }
         };
 
-        renderSeriesList(data.series);
-        
         const seriesSentinel = container.createDiv();
         seriesSentinel.style.height = "20px";
         seriesSentinel.style.width = "100%";
         
         const observer = new IntersectionObserver((entries) => {
             if (entries[0].isIntersecting) {
-                if (currentLoadedCount < seriesCardElements.length) {
+                if (currentLoadedCount < matchedSeriesData.length) {
+                    let start = currentLoadedCount;
                     currentLoadedCount += currentLimit;
-                    applyFilters(false);
+                    let nextBatch = matchedSeriesData.slice(start, currentLoadedCount);
+                    if (nextBatch.length > 0) {
+                        renderSeriesList(nextBatch, true);
+                    }
                 }
             }
         }, { threshold: 0.1 });
@@ -2103,10 +2107,9 @@ class BookshelfView extends ItemView {
             }
             
             let visibleSeries = 0;
-            let matchedSeries = [];
+            matchedSeriesData = [];
             
-            for (let item of seriesCardElements) {
-                let s = item.series;
+            for (let s of data.series) {
                 let match = true;
                 
                 if (statusQuery) {
@@ -2202,32 +2205,24 @@ class BookshelfView extends ItemView {
                 }
                 
                 if (match) {
-                    matchedSeries.push(item);
-                } else {
-                    item.card.style.display = "none";
+                    matchedSeriesData.push(s);
                 }
             }
             
             if (currentSort === "name") {
-                matchedSeries.sort((a, b) => {
-                    let nameA = a.series.metadata && a.series.metadata.title ? String(a.series.metadata.title) : a.series.name;
-                    let nameB = b.series.metadata && b.series.metadata.title ? String(b.series.metadata.title) : b.series.name;
+                matchedSeriesData.sort((a, b) => {
+                    let nameA = a.metadata && a.metadata.title ? String(a.metadata.title) : a.name;
+                    let nameB = b.metadata && b.metadata.title ? String(b.metadata.title) : b.name;
                     return nameA.localeCompare(nameB);
                 });
             } else if (currentSort === "lastUpdate") {
-                matchedSeries.sort((a, b) => b.series.lastAdded - a.series.lastAdded);
+                matchedSeriesData.sort((a, b) => b.lastAdded - a.lastAdded);
             }
             
-            visibleSeries = matchedSeries.length;
+            visibleSeries = matchedSeriesData.length;
             
-            for (let i = 0; i < matchedSeries.length; i++) {
-                let item = matchedSeries[i];
-                if (i < currentLoadedCount) {
-                    seriesGrid.appendChild(item.card); // Re-append in sorted order
-                    item.card.style.display = "flex";
-                } else {
-                    item.card.style.display = "none";
-                }
+            if (resetCount) {
+                renderSeriesList(matchedSeriesData.slice(0, currentLoadedCount), false);
             }
             
             seriesHeader.innerText = isFiltering ? `Series (${visibleSeries} found)` : `Series (${data.series.length})`;
@@ -3344,6 +3339,11 @@ class BookshelfPlugin extends Plugin {
     }
 
     onunload() {
+        this.app.workspace.detachLeavesOfType(VIEW_TYPE_BOOKSHELF);
+        this.app.workspace.detachLeavesOfType(VIEW_TYPE_SERIES_DETAILS);
+        this.app.workspace.detachLeavesOfType(VIEW_TYPE_DUMMY_EXT);
+        this.app.workspace.detachLeavesOfType(VIEW_TYPE_SCAN_PROGRESS);
+
         if (this.webServer) this.webServer.stop();
         this.applyHideCoverCss(false);
         this.applyHideBookMdCss(false);

@@ -120,6 +120,9 @@ For detailed, step-by-step instructions on how to use specific features, please 
 - **Error Transparency**: Added more detailed JSON error messages to aid in troubleshooting plugin issues.
 - **Bug Fix**: Addressed an issue preventing the plugin from being fully enabled in certain edge cases by removing problematic view extension modification routines.
 
+### v1.0.11
+- **True Lazy Loading**: The Home screen's Series grid has been completely rewritten to use true lazy loading with infinite scrolling. Instead of creating thousands of HTML elements at once, it now loads in instant batches of 50 as you scroll down. Opening the Home tab with massive libraries is now lightning fast and completely freeze-free.
+
 ## ❤️ Support & Donate
 
 If this plugin has improved your Obsidian workflow, saved you time, or you just want to support its continued development, please consider donating! 

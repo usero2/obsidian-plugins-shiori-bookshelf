@@ -25,3 +25,7 @@ main_work_for_scan_without_open_pdf.js
 src
 *.ts
 *.json
+*.js
+*.py
+*.txt
+*.json
