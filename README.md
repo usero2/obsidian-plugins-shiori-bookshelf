@@ -107,6 +107,12 @@ For detailed, step-by-step instructions on how to use specific features, please 
 - **WebApp Search Polish**: Fixed a UI issue where the "New Book Add" carousel would stay visible while using the search bar or advanced filters. It now hides itself intelligently when you are filtering your library.
 - **WebApp UI Tweak**: Renamed the "Download / Open" button to just "Download" for a cleaner look.
 
+### v1.0.9
+- **Auto Save Metadata**: The metadata edit window is now seamless! Changes to aliases, summaries, and tags are saved automatically as you type. Manual Save and Cancel buttons have been removed for a cleaner, modern experience.
+- **Detailed Auto Fill Notice**: When using the Gemini Auto Fill feature, the notification now provides a detailed breakdown of exactly which fields (e.g., Aliases, Summary, Genres, Tags) were successfully updated.
+- **Enhanced Context Menus**: The native Obsidian file explorer context menu has been upgraded. You can now launch the "Series Detail" or "Book Detail" modal directly from folders and files. Added an "Open Metadata file" shortcut to instantly access the raw data.
+- **Dynamic Folder Icons**: Completely overhauled folder collapse indicators! Your Library root folders now feature beautiful FontAwesome folder icons (solid for Series libraries, regular for Single libraries), and individual series folders seamlessly transform into Book icons, making your navigation pane gorgeous.
+
 ## ❤️ Support & Donate
 
 If this plugin has improved your Obsidian workflow, saved you time, or you just want to support its continued development, please consider donating! 
