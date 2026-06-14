@@ -1679,6 +1679,12 @@ class BookshelfView extends ItemView {
             if (sid) {
                 const s = data.series.find(x => x.id === sid);
                 if (s && card._updateContent) {
+                    let booksLen = s.books ? s.books.length : 0;
+                    if (card._lastBooksLen === booksLen && card._lastCoverImg === s.coverImg) {
+                        return;
+                    }
+                    card._lastBooksLen = booksLen;
+                    card._lastCoverImg = s.coverImg;
                     card._updateContent(s);
                 }
             }
@@ -1687,11 +1693,37 @@ class BookshelfView extends ItemView {
     
     async renderBookshelf() {
         const container = this.containerEl.children[1];
+        if (!container) return;
         const scrollPos = container.scrollTop;
+        
+        let activeInputClass = null;
+        let selStart = 0, selEnd = 0;
+        const active = document.activeElement;
+        if (active && active.tagName === 'INPUT' && active.classList.contains('bookshelf-search')) {
+            activeInputClass = active.placeholder;
+            try {
+                selStart = active.selectionStart;
+                selEnd = active.selectionEnd;
+            } catch(e) {}
+        }
+        
         container.empty();
         const data = this.plugin.getLibraryData();
         this.renderHome(container, data);
-        setTimeout(() => { if (container) container.scrollTop = scrollPos; }, 0);
+        
+        setTimeout(() => { 
+            if (container) container.scrollTop = scrollPos; 
+            if (activeInputClass) {
+                const inputs = container.querySelectorAll('input.bookshelf-search');
+                for (let i = 0; i < inputs.length; i++) {
+                    if (inputs[i].placeholder === activeInputClass) {
+                        inputs[i].focus();
+                        try { inputs[i].setSelectionRange(selStart, selEnd); } catch(e) {}
+                        break;
+                    }
+                }
+            }
+        }, 0);
     }
 
     renderHome(container, data) {
@@ -1710,6 +1742,7 @@ class BookshelfView extends ItemView {
 
         const searchContainer = header.createDiv();
         searchContainer.style.display = "flex";
+        searchContainer.style.flexWrap = "wrap";
         searchContainer.style.flex = "1";
         searchContainer.style.gap = "10px";
         searchContainer.style.minWidth = "250px";
@@ -1721,6 +1754,8 @@ class BookshelfView extends ItemView {
         searchInput.style.border = "1px solid var(--background-modifier-border)";
         searchInput.style.background = "var(--background-primary)";
         searchInput.style.color = "var(--text-normal)";
+        if (this._filterSeries !== undefined) searchInput.value = this._filterSeries;
+        searchInput.addEventListener('input', () => this._filterSeries = searchInput.value);
 
         const writerInput = searchContainer.createEl("input", { type: "text", placeholder: "Filter by writer...", cls: "bookshelf-search" });
         writerInput.style.flex = "1";
@@ -1729,6 +1764,8 @@ class BookshelfView extends ItemView {
         writerInput.style.border = "1px solid var(--background-modifier-border)";
         writerInput.style.background = "var(--background-primary)";
         writerInput.style.color = "var(--text-normal)";
+        if (this._filterWriter !== undefined) writerInput.value = this._filterWriter;
+        writerInput.addEventListener('input', () => this._filterWriter = writerInput.value);
 
         const statusSelect = searchContainer.createEl("select", { cls: "bookshelf-search" });
         statusSelect.style.flex = "0 1 auto";
@@ -1739,6 +1776,8 @@ class BookshelfView extends ItemView {
         statusSelect.style.color = "var(--text-normal)";
         const statuses = ["Any Status", "Ongoing", "Completed", "Hiatus", "Cancelled"];
         statuses.forEach(s => statusSelect.createEl("option", { value: s === "Any Status" ? "" : s, text: s }));
+        if (this._filterStatus !== undefined) statusSelect.value = this._filterStatus;
+        statusSelect.addEventListener('change', () => this._filterStatus = statusSelect.value);
 
 
         const advFilterBtn = searchContainer.createEl("button", { text: "Advance Filter", cls: "bookshelf-btn" });
@@ -2687,14 +2726,19 @@ When you use Force Rename on a book file, the plugin does more than just rename 
 
         new Setting(generalContainer)
             .setName("Ignore Folders")
-            .setDesc("Comma-separated list of folder names to ignore during scan. Books in these folders will not be shown.")
-            .addText(text => text
-                .setPlaceholder("_ignore")
-                .setValue(this.plugin.settings.ignoreFolders)
-                .onChange(async (value) => {
-                    this.plugin.settings.ignoreFolders = value;
-                    await this.plugin.saveSettings();
-                }));
+            .setDesc("One folder name per line to ignore during scan. Books in these folders will not be shown.")
+            .addTextArea(text => {
+                text.setPlaceholder("_ignore\n_duplicate")
+                    .setValue(this.plugin.settings.ignoreFolders)
+                    .onChange(async (value) => {
+                        this.plugin.settings.ignoreFolders = value;
+                        adjustRows(text.inputEl);
+                        await this.plugin.saveSettings();
+                    });
+                text.inputEl.cols = 40;
+                adjustRows(text.inputEl);
+                text.inputEl.addEventListener('input', () => adjustRows(text.inputEl));
+            });
                 
         new Setting(generalContainer)
             .setName("Gemini API Key")
@@ -2798,13 +2842,18 @@ When you use Force Rename on a book file, the plugin does more than just rename 
             new Setting(webServerContainer)
                 .setName("Web Server Users")
                 .setDesc("Enter users as 'username:password', one per line.")
-                .addTextArea(text => text
-                    .setPlaceholder("admin:admin\nuser:1234")
-                    .setValue(this.plugin.settings.webAuthUsers)
-                    .onChange(async (value) => {
-                        this.plugin.settings.webAuthUsers = value;
-                        await this.plugin.saveSettings();
-                    }))
+                .addTextArea(text => {
+                    text.setPlaceholder("admin:admin\nuser:1234")
+                        .setValue(this.plugin.settings.webAuthUsers)
+                        .onChange(async (value) => {
+                            this.plugin.settings.webAuthUsers = value;
+                            adjustRows(text.inputEl);
+                            await this.plugin.saveSettings();
+                        });
+                    text.inputEl.cols = 40;
+                    adjustRows(text.inputEl);
+                    text.inputEl.addEventListener('input', () => adjustRows(text.inputEl));
+                })
                 .settingEl.querySelector('.setting-item-control').style.width = "100%";
         }
         // Render initially
@@ -3385,7 +3434,7 @@ class BookshelfPlugin extends Plugin {
             }
             
             if (selectors.length > 0) {
-                existing.textContent = selectors.join(",\n") + " { display: none !important; }";
+                existing.textContent = selectors.map(s => `${s} { display: none !important; }`).join("\n");
             } else {
                 existing.textContent = "";
             }
@@ -3475,7 +3524,7 @@ class BookshelfPlugin extends Plugin {
         let singleLibraryPaths = (this.settings.singleLibraries || "").split("\n").map(l => l.trim().replace(/\\/g, "/")).filter(l => l);
         
         let ignoreFolders = (this.settings.ignoreFolders || "_ignore")
-            .split(",")
+            .split("\n")
             .map(i => i.trim().toLowerCase())
             .filter(i => i);
         
@@ -3739,7 +3788,7 @@ class BookshelfPlugin extends Plugin {
         } catch (e) {
             await writeLog(`CRITICAL ERROR in extractPdfCover: ${e.message}\nStack: ${e.stack}`);
             console.error("Failed to extract PDF cover", e);
-            new Notice(`Failed to extract PDF: ${e.message}`);
+            new Notice(`[Shiori Bookshelf] Failed to extract PDF: ${file.name}\nPath: ${file.path}\nError: ${e.message}\n\nPlease check if the file is corrupted, password-protected, or incomplete.`, 0);
             return null;
         }
     }

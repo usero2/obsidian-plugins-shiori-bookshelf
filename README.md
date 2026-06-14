@@ -111,7 +111,14 @@ For detailed, step-by-step instructions on how to use specific features, please 
 - **Auto Save Metadata**: The metadata edit window is now seamless! Changes to aliases, summaries, and tags are saved automatically as you type. Manual Save and Cancel buttons have been removed for a cleaner, modern experience.
 - **Detailed Auto Fill Notice**: When using the Gemini Auto Fill feature, the notification now provides a detailed breakdown of exactly which fields (e.g., Aliases, Summary, Genres, Tags) were successfully updated.
 - **Enhanced Context Menus**: The native Obsidian file explorer context menu has been upgraded. You can now launch the "Series Detail" or "Book Detail" modal directly from folders and files. Added an "Open Metadata file" shortcut to instantly access the raw data.
-- **Dynamic Folder Icons**: Completely overhauled folder collapse indicators! Your Library root folders now feature beautiful FontAwesome folder icons (solid for Series libraries, regular for Single libraries), and individual series folders seamlessly transform into Book icons, making your navigation pane gorgeous.
+### v1.0.10
+- **UI Overflow Fix**: Fixed an issue where the Home screen search filters and buttons would overflow off the screen on narrower windows or when resizing. They now gracefully wrap to the next line.
+- **Seamless Scanning Experience**: Completely eliminated home screen flickering and UI lag during background "Scan All" or cover extraction operations. You can now smoothly search, filter, and type without any interruptions while the plugin scans in the background.
+- **Sticky Notifications**: Notifications will now remain visible on the screen until you manually click "Clear All", ensuring you never miss important detailed information or scan results.
+- **Auto-expanding Inputs**: The "Web Server Users" and "Ignore Folders" input fields in the settings menu now automatically expand their height based on your text, exactly like the Libraries field.
+- **Improved Settings Format**: The Extensions setting now accepts "one-per-line" format to match the behavior of the Libraries setting, removing the need for comma separation.
+- **Error Transparency**: Added more detailed JSON error messages to aid in troubleshooting plugin issues.
+- **Bug Fix**: Addressed an issue preventing the plugin from being fully enabled in certain edge cases by removing problematic view extension modification routines.
 
 ## ❤️ Support & Donate
 
