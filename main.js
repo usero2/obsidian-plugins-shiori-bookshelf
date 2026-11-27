@@ -993,7 +993,7 @@ class EditSeriesMetadataModal extends Modal {
                 if (parsed.tags && Array.isArray(parsed.tags) && parsed.tags.length > 0 && !tagsInput.value) { tagsInput.value = parsed.tags.join(", "); fieldsUpdated.push("Tags"); }
                 if (parsed.ageRating && !ageRatingInput.value) { ageRatingInput.value = parsed.ageRating; fieldsUpdated.push("Age Rating"); }
                 
-                triggerAutoSave();
+                await triggerAutoSave()
                 
                 if (fieldsUpdated.length > 0) {
                     fetchNotice.setMessage(`✨ Auto Fill complete for "${currentTitle}"!\nUpdated fields: ${fieldsUpdated.join(", ")}`);
@@ -1049,24 +1049,25 @@ class EditSeriesMetadataModal extends Modal {
                 if (!this.series.id.startsWith("standalone-")) {
                     notePath = `${this.series.id}/${this.series.name}.md`;
                 } else {
-                    notePath = this.series.books[0].file.path;
+                    const bookFile = this.series.books[0] && this.series.books[0].file;
+                    if (!bookFile) throw new Error("No book file is available for this standalone item.");
+                    notePath = bookFile.path.substring(0, bookFile.path.lastIndexOf(".")) + ".md";
                 }
                 
                 targetFile = this.app.vault.getAbstractFileByPath(notePath);
-                
-                if (!targetFile && !this.series.id.startsWith("standalone-")) {
+                if (!targetFile) {
                     targetFile = await this.app.vault.create(notePath, "");
                 }
                 
-                if (targetFile) {
-                    await this.app.fileManager.processFrontMatter(targetFile, (fm) => {
-                        const keysToClear = ["title", "aliases", "summary", "description", "writers", "publisher", "year", "release date", "genres", "tags", "age rating", "agerating", "status"];
-                        keysToClear.forEach(k => delete fm[k]);
-                        Object.assign(fm, fmData);
-                    });
-                }
+                if (!targetFile) throw new Error(`Could not create metadata note: ${notePath}`);
+                await this.app.fileManager.processFrontMatter(targetFile, (fm) => {
+                    const keysToClear = ["title", "aliases", "summary", "description", "writers", "publisher", "year", "releaseYear", "release date", "genres", "tags", "age rating", "agerating", "status"];
+                    keysToClear.forEach(k => delete fm[k]);
+                    Object.assign(fm, fmData);
+                });
             } catch (e) {
-                console.error(e);
+                console.error("Shiori Bookshelf metadata save failed:", e);
+                new Notice("Could not save metadata: " + (e && e.message ? e.message : String(e)));
             }
         };
 
@@ -1240,9 +1241,49 @@ class SeriesDetailsView extends ItemView {
         const editBtn = titleRow.createEl("button", { text: "✏️ Edit Metadata" });
         editBtn.style.cssText = "padding:4px 8px; font-size:12px; cursor:pointer; border-radius:4px; background:var(--interactive-normal); color:var(--text-normal); border:1px solid var(--background-modifier-border);";
         editBtn.onclick = () => {
-            // Include 'title' in seriesMeta to prepopulate
-            seriesMeta.title = series.metadata && series.metadata.title ? String(series.metadata.title) : "";
-            new EditSeriesMetadataModal(this.plugin.app, series, seriesMeta, this.plugin).open();
+            // Re-read the frontmatter at click time so the modal never opens with stale data.
+            const currentData = this.plugin.getLibraryData();
+            const currentSeries = currentData.series.find(s => s.id === this.seriesId) || series;
+            const readFirst = (keys) => {
+                for (const key of keys) {
+                    const value = currentSeries.metadata && currentSeries.metadata[key];
+                    if (value !== undefined && value !== null && value !== "") return String(value);
+                }
+                for (const book of currentSeries.books) {
+                    for (const key of keys) {
+                        const value = book.metadata && book.metadata[key];
+                        if (value !== undefined && value !== null && value !== "") return String(value);
+                    }
+                }
+                return "";
+            };
+            const readArray = (keys) => {
+                const values = new Set();
+                const sources = [currentSeries.metadata, ...currentSeries.books.map(book => book.metadata)];
+                for (const source of sources) {
+                    for (const key of keys) {
+                        const value = source && source[key];
+                        if (Array.isArray(value)) value.forEach(x => values.add(String(x).trim()));
+                        else if (typeof value === "string") value.split(",").forEach(x => values.add(x.trim()));
+                    }
+                }
+                return Array.from(values).filter(Boolean);
+            };
+            const currentMeta = {
+                title: readFirst(["title"]),
+                aliases: readArray(["aliases"]),
+                summary: readFirst(["summary", "description"]),
+                writers: readArray(["writers", "writer", "creators", "creator", "author", "authors"]),
+                publisher: readFirst(["publisher", "publishers"]),
+                releaseDate: readFirst(["release date", "publication date", "year", "releaseYear", "date"]),
+                genres: readArray(["genres", "genre", "subjects", "subject"]),
+                tags: readArray(["tags", "tag"]),
+                ageRating: readFirst(["age rating", "agerating", "ageRating"]),
+                status: readFirst(["status", "publication status"])
+            };
+            const yearMatch = currentMeta.releaseDate.match(/\b(19|20)\d{2}\b/);
+            if (yearMatch) currentMeta.releaseDate = yearMatch[0];
+            new EditSeriesMetadataModal(this.plugin.app, currentSeries, currentMeta, this.plugin).open();
         };
 
         const scanBtn = titleRow.createEl("button", { text: "🔍 Scan" });
@@ -5548,3 +5589,5 @@ class BookshelfServer {
 module.exports = BookshelfPlugin;
 
 
+
+/* nosourcemap */
