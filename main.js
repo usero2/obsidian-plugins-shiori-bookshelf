@@ -120,6 +120,29 @@ function openBook(plugin, bookFile) {
     }
 }
 
+function getSeriesMetadataValues(series, keys) {
+    const values = [];
+    const sources = [series && series.metadata, ...((series && series.books) || []).map(book => book.metadata)];
+    for (const source of sources) {
+        if (!source) continue;
+        for (const key of keys) {
+            const value = source[key];
+            if (Array.isArray(value)) values.push(...value);
+            else if (typeof value === "string") values.push(...value.split(","));
+        }
+    }
+    return values.map(value => String(value).trim()).filter(Boolean);
+}
+
+function getSeriesMetadataValue(series, keys) {
+    const values = getSeriesMetadataValues(series, keys);
+    return values.length > 0 ? values[0] : "";
+}
+
+function normalizeObsidianTag(tag) {
+    return String(tag).trim().replace(/^#+/, "").replace(/\s+/g, "-");
+}
+
 function attachBookContextMenu(element, book, plugin) {
     element.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
@@ -237,7 +260,9 @@ function attachBookContextMenu(element, book, plugin) {
             item.setTitle("Open Metadata file")
                 .setIcon("file-text")
                 .onClick(async () => {
-                    let mdFile = plugin.app.vault.getAbstractFileByPath(book.metadataFile);
+                    const metadataPath = book.metadataFile ||
+                        (book.file && book.file.path.substring(0, book.file.path.lastIndexOf(".")) + ".md");
+                    let mdFile = metadataPath ? plugin.app.vault.getAbstractFileByPath(metadataPath) : null;
                     if (mdFile instanceof TFile) {
                         plugin.app.workspace.getLeaf(false).openFile(mdFile);
                     } else {
@@ -990,10 +1015,13 @@ class EditSeriesMetadataModal extends Modal {
                 if (parsed.publisher && !publisherInput.value) { publisherInput.value = parsed.publisher; fieldsUpdated.push("Publisher"); }
                 if (parsed.releaseYear && !releaseYearInput.value) { releaseYearInput.value = parsed.releaseYear; fieldsUpdated.push("Release Year"); }
                 if (parsed.genres && Array.isArray(parsed.genres) && parsed.genres.length > 0 && !genresInput.value) { genresInput.value = parsed.genres.join(", "); fieldsUpdated.push("Genres"); }
-                if (parsed.tags && Array.isArray(parsed.tags) && parsed.tags.length > 0 && !tagsInput.value) { tagsInput.value = parsed.tags.join(", "); fieldsUpdated.push("Tags"); }
+                if (parsed.tags && Array.isArray(parsed.tags) && parsed.tags.length > 0 && !tagsInput.value) {
+                    tagsInput.value = parsed.tags.map(normalizeObsidianTag).filter(Boolean).join(", ");
+                    fieldsUpdated.push("Tags");
+                }
                 if (parsed.ageRating && !ageRatingInput.value) { ageRatingInput.value = parsed.ageRating; fieldsUpdated.push("Age Rating"); }
                 
-                triggerAutoSave();
+                await triggerAutoSave()
                 
                 if (fieldsUpdated.length > 0) {
                     fetchNotice.setMessage(`✨ Auto Fill complete for "${currentTitle}"!\nUpdated fields: ${fieldsUpdated.join(", ")}`);
@@ -1031,7 +1059,7 @@ class EditSeriesMetadataModal extends Modal {
                 publisher: publisherInput.value.trim(),
                 year: releaseYearInput.value.trim(),
                 genres: genresInput.value.split(",").map(s => s.trim()).filter(s => s),
-                tags: tagsInput.value.split(",").map(s => s.trim()).filter(s => s),
+                tags: tagsInput.value.split(",").map(normalizeObsidianTag).filter(s => s),
                 "age rating": ageRatingInput.value.trim(),
                 status: statusInput.value
             };
@@ -1049,24 +1077,25 @@ class EditSeriesMetadataModal extends Modal {
                 if (!this.series.id.startsWith("standalone-")) {
                     notePath = `${this.series.id}/${this.series.name}.md`;
                 } else {
-                    notePath = this.series.books[0].file.path;
+                    const bookFile = this.series.books[0] && this.series.books[0].file;
+                    if (!bookFile) throw new Error("No book file is available for this standalone item.");
+                    notePath = bookFile.path.substring(0, bookFile.path.lastIndexOf(".")) + ".md";
                 }
                 
                 targetFile = this.app.vault.getAbstractFileByPath(notePath);
-                
-                if (!targetFile && !this.series.id.startsWith("standalone-")) {
+                if (!targetFile) {
                     targetFile = await this.app.vault.create(notePath, "");
                 }
                 
-                if (targetFile) {
-                    await this.app.fileManager.processFrontMatter(targetFile, (fm) => {
-                        const keysToClear = ["title", "aliases", "summary", "description", "writers", "publisher", "year", "release date", "genres", "tags", "age rating", "agerating", "status"];
-                        keysToClear.forEach(k => delete fm[k]);
-                        Object.assign(fm, fmData);
-                    });
-                }
+                if (!targetFile) throw new Error(`Could not create metadata note: ${notePath}`);
+                await this.app.fileManager.processFrontMatter(targetFile, (fm) => {
+                    const keysToClear = ["title", "aliases", "summary", "description", "writers", "publisher", "year", "releaseYear", "release date", "genres", "tags", "age rating", "agerating", "status"];
+                    keysToClear.forEach(k => delete fm[k]);
+                    Object.assign(fm, fmData);
+                });
             } catch (e) {
-                console.error(e);
+                console.error("Shiori Bookshelf metadata save failed:", e);
+                new Notice("Could not save metadata: " + (e && e.message ? e.message : String(e)));
             }
         };
 
@@ -1240,9 +1269,49 @@ class SeriesDetailsView extends ItemView {
         const editBtn = titleRow.createEl("button", { text: "✏️ Edit Metadata" });
         editBtn.style.cssText = "padding:4px 8px; font-size:12px; cursor:pointer; border-radius:4px; background:var(--interactive-normal); color:var(--text-normal); border:1px solid var(--background-modifier-border);";
         editBtn.onclick = () => {
-            // Include 'title' in seriesMeta to prepopulate
-            seriesMeta.title = series.metadata && series.metadata.title ? String(series.metadata.title) : "";
-            new EditSeriesMetadataModal(this.plugin.app, series, seriesMeta, this.plugin).open();
+            // Re-read the frontmatter at click time so the modal never opens with stale data.
+            const currentData = this.plugin.getLibraryData();
+            const currentSeries = currentData.series.find(s => s.id === this.seriesId) || series;
+            const readFirst = (keys) => {
+                for (const key of keys) {
+                    const value = currentSeries.metadata && currentSeries.metadata[key];
+                    if (value !== undefined && value !== null && value !== "") return String(value);
+                }
+                for (const book of currentSeries.books) {
+                    for (const key of keys) {
+                        const value = book.metadata && book.metadata[key];
+                        if (value !== undefined && value !== null && value !== "") return String(value);
+                    }
+                }
+                return "";
+            };
+            const readArray = (keys) => {
+                const values = new Set();
+                const sources = [currentSeries.metadata, ...currentSeries.books.map(book => book.metadata)];
+                for (const source of sources) {
+                    for (const key of keys) {
+                        const value = source && source[key];
+                        if (Array.isArray(value)) value.forEach(x => values.add(String(x).trim()));
+                        else if (typeof value === "string") value.split(",").forEach(x => values.add(x.trim()));
+                    }
+                }
+                return Array.from(values).filter(Boolean);
+            };
+            const currentMeta = {
+                title: readFirst(["title"]),
+                aliases: readArray(["aliases"]),
+                summary: readFirst(["summary", "description"]),
+                writers: readArray(["writers", "writer", "creators", "creator", "author", "authors"]),
+                publisher: readFirst(["publisher", "publishers"]),
+                releaseDate: readFirst(["release date", "publication date", "year", "releaseYear", "date"]),
+                genres: readArray(["genres", "genre", "subjects", "subject"]),
+                tags: readArray(["tags", "tag"]),
+                ageRating: readFirst(["age rating", "agerating", "ageRating"]),
+                status: readFirst(["status", "publication status"])
+            };
+            const yearMatch = currentMeta.releaseDate.match(/\b(19|20)\d{2}\b/);
+            if (yearMatch) currentMeta.releaseDate = yearMatch[0];
+            new EditSeriesMetadataModal(this.plugin.app, currentSeries, currentMeta, this.plugin).open();
         };
 
         const scanBtn = titleRow.createEl("button", { text: "🔍 Scan" });
@@ -2112,24 +2181,11 @@ class BookshelfView extends ItemView {
             for (let s of data.series) {
                 let match = true;
                 
-                if (statusQuery) {
-                    if (!s.metadata || s.metadata.status !== statusQuery) match = false;
-                }
+                if (statusQuery && getSeriesMetadataValue(s, ["status", "publication status"]) !== statusQuery) match = false;
                 
                 if (match && writerQuery) {
-                    let wMatch = false;
-                    if (s.metadata && s.metadata.writers) {
-                        let w = s.metadata.writers;
-                        let arr = Array.isArray(w) ? w : (typeof w === "string" ? w.split(",") : []);
-                        if (arr.some(writer => String(writer).toLowerCase().includes(writerQuery))) wMatch = true;
-                    }
-                    if (!wMatch && !s.metadata) {
-                        for (let b of s.books) {
-                            if (b.metadata && b.metadata.author && String(b.metadata.author).toLowerCase().includes(writerQuery)) {
-                                wMatch = true; break;
-                            }
-                        }
-                    }
+                    const wMatch = getSeriesMetadataValues(s, ["writers", "writer", "creators", "creator", "author", "authors"])
+                        .some(writer => writer.toLowerCase().includes(writerQuery));
                     if (!wMatch) match = false;
                 }
                 
@@ -2235,24 +2291,11 @@ class BookshelfView extends ItemView {
                 for (let s of data.series) {
                     let match = true;
                     
-                    if (statusQuery) {
-                        if (!s.metadata || s.metadata.status !== statusQuery) match = false;
-                    }
+                    if (statusQuery && getSeriesMetadataValue(s, ["status", "publication status"]) !== statusQuery) match = false;
                     
                     if (match && writerQuery) {
-                        let wMatch = false;
-                        if (s.metadata && s.metadata.writers) {
-                            let w = s.metadata.writers;
-                            let arr = Array.isArray(w) ? w : (typeof w === "string" ? w.split(",") : []);
-                            if (arr.some(writer => String(writer).toLowerCase().includes(writerQuery))) wMatch = true;
-                        }
-                        if (!wMatch && !s.metadata) {
-                            for (let b of s.books) {
-                                if (b.metadata && b.metadata.author && String(b.metadata.author).toLowerCase().includes(writerQuery)) {
-                                    wMatch = true; break;
-                                }
-                            }
-                        }
+                        const wMatch = getSeriesMetadataValues(s, ["writers", "writer", "creators", "creator", "author", "authors"])
+                            .some(writer => writer.toLowerCase().includes(writerQuery));
                         if (!wMatch) match = false;
                     }
                     
@@ -3591,6 +3634,9 @@ class BookshelfPlugin extends Plugin {
             }
 
             let mdPath = file.path.substring(0, file.path.lastIndexOf(".")) + ".md";
+            let canonicalMetadataPath = seriesId.startsWith("standalone-")
+                ? mdPath
+                : `${seriesId}/${seriesName}.md`;
             let metadata = {};
             let mdFile = mdFiles[mdPath];
             if (mdFile) {
@@ -3605,6 +3651,7 @@ class BookshelfPlugin extends Plugin {
                 basename: file.basename,
                 extension: file.extension,
                 metadata: metadata,
+                metadataFile: canonicalMetadataPath,
                 ctime: file.stat.ctime 
             };
 
@@ -4840,25 +4887,11 @@ class BookshelfServer {
                 
                 if (qSeries && !title.includes(qSeries) && !alias.includes(qSeries)) return false;
                 
-                if (qWriter) {
-                    let wMatch = false;
-                    if (s.metadata && s.metadata.writers) {
-                        let w = s.metadata.writers;
-                        let arr = Array.isArray(w) ? w : (typeof w === "string" ? w.split(",") : []);
-                        if (arr.some(writer => String(writer).toLowerCase().includes(qWriter))) wMatch = true;
-                    }
-                    if (!wMatch && !s.metadata) {
-                        for (let b of s.books) {
-                            if (b.metadata && b.metadata.author && String(b.metadata.author).toLowerCase().includes(qWriter)) {
-                                wMatch = true; break;
-                            }
-                        }
-                    }
-                    if (!wMatch) return false;
-                }
+                if (qWriter && !getSeriesMetadataValues(s, ["writers", "writer", "creators", "creator", "author", "authors"])
+                    .some(writer => writer.toLowerCase().includes(qWriter))) return false;
                 
                 if (qStatus !== "Any Status") {
-                    const status = (s.metadata && s.metadata.status) ? s.metadata.status : "Ongoing";
+                    const status = getSeriesMetadataValue(s, ["status", "publication status"]) || "Ongoing";
                     if (status !== qStatus) return false;
                 }
 
@@ -5548,3 +5581,5 @@ class BookshelfServer {
 module.exports = BookshelfPlugin;
 
 
+
+/* nosourcemap */
