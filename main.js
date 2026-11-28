@@ -237,7 +237,9 @@ function attachBookContextMenu(element, book, plugin) {
             item.setTitle("Open Metadata file")
                 .setIcon("file-text")
                 .onClick(async () => {
-                    let mdFile = plugin.app.vault.getAbstractFileByPath(book.metadataFile);
+                    const metadataPath = book.metadataFile ||
+                        (book.file && book.file.path.substring(0, book.file.path.lastIndexOf(".")) + ".md");
+                    let mdFile = metadataPath ? plugin.app.vault.getAbstractFileByPath(metadataPath) : null;
                     if (mdFile instanceof TFile) {
                         plugin.app.workspace.getLeaf(false).openFile(mdFile);
                     } else {
@@ -3632,6 +3634,9 @@ class BookshelfPlugin extends Plugin {
             }
 
             let mdPath = file.path.substring(0, file.path.lastIndexOf(".")) + ".md";
+            let canonicalMetadataPath = seriesId.startsWith("standalone-")
+                ? mdPath
+                : `${seriesId}/${seriesName}.md`;
             let metadata = {};
             let mdFile = mdFiles[mdPath];
             if (mdFile) {
@@ -3646,6 +3651,7 @@ class BookshelfPlugin extends Plugin {
                 basename: file.basename,
                 extension: file.extension,
                 metadata: metadata,
+                metadataFile: canonicalMetadataPath,
                 ctime: file.stat.ctime 
             };
 
