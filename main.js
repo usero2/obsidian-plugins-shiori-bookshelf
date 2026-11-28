@@ -139,6 +139,10 @@ function getSeriesMetadataValue(series, keys) {
     return values.length > 0 ? values[0] : "";
 }
 
+function normalizeObsidianTag(tag) {
+    return String(tag).trim().replace(/^#+/, "").replace(/\s+/g, "-");
+}
+
 function attachBookContextMenu(element, book, plugin) {
     element.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
@@ -1011,7 +1015,10 @@ class EditSeriesMetadataModal extends Modal {
                 if (parsed.publisher && !publisherInput.value) { publisherInput.value = parsed.publisher; fieldsUpdated.push("Publisher"); }
                 if (parsed.releaseYear && !releaseYearInput.value) { releaseYearInput.value = parsed.releaseYear; fieldsUpdated.push("Release Year"); }
                 if (parsed.genres && Array.isArray(parsed.genres) && parsed.genres.length > 0 && !genresInput.value) { genresInput.value = parsed.genres.join(", "); fieldsUpdated.push("Genres"); }
-                if (parsed.tags && Array.isArray(parsed.tags) && parsed.tags.length > 0 && !tagsInput.value) { tagsInput.value = parsed.tags.join(", "); fieldsUpdated.push("Tags"); }
+                if (parsed.tags && Array.isArray(parsed.tags) && parsed.tags.length > 0 && !tagsInput.value) {
+                    tagsInput.value = parsed.tags.map(normalizeObsidianTag).filter(Boolean).join(", ");
+                    fieldsUpdated.push("Tags");
+                }
                 if (parsed.ageRating && !ageRatingInput.value) { ageRatingInput.value = parsed.ageRating; fieldsUpdated.push("Age Rating"); }
                 
                 await triggerAutoSave()
@@ -1052,7 +1059,7 @@ class EditSeriesMetadataModal extends Modal {
                 publisher: publisherInput.value.trim(),
                 year: releaseYearInput.value.trim(),
                 genres: genresInput.value.split(",").map(s => s.trim()).filter(s => s),
-                tags: tagsInput.value.split(",").map(s => s.trim()).filter(s => s),
+                tags: tagsInput.value.split(",").map(normalizeObsidianTag).filter(s => s),
                 "age rating": ageRatingInput.value.trim(),
                 status: statusInput.value
             };
