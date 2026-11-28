@@ -120,6 +120,25 @@ function openBook(plugin, bookFile) {
     }
 }
 
+function getSeriesMetadataValues(series, keys) {
+    const values = [];
+    const sources = [series && series.metadata, ...((series && series.books) || []).map(book => book.metadata)];
+    for (const source of sources) {
+        if (!source) continue;
+        for (const key of keys) {
+            const value = source[key];
+            if (Array.isArray(value)) values.push(...value);
+            else if (typeof value === "string") values.push(...value.split(","));
+        }
+    }
+    return values.map(value => String(value).trim()).filter(Boolean);
+}
+
+function getSeriesMetadataValue(series, keys) {
+    const values = getSeriesMetadataValues(series, keys);
+    return values.length > 0 ? values[0] : "";
+}
+
 function attachBookContextMenu(element, book, plugin) {
     element.addEventListener("contextmenu", (ev) => {
         ev.preventDefault();
@@ -2155,24 +2174,11 @@ class BookshelfView extends ItemView {
             for (let s of data.series) {
                 let match = true;
                 
-                if (statusQuery) {
-                    if (!s.metadata || s.metadata.status !== statusQuery) match = false;
-                }
+                if (statusQuery && getSeriesMetadataValue(s, ["status", "publication status"]) !== statusQuery) match = false;
                 
                 if (match && writerQuery) {
-                    let wMatch = false;
-                    if (s.metadata && s.metadata.writers) {
-                        let w = s.metadata.writers;
-                        let arr = Array.isArray(w) ? w : (typeof w === "string" ? w.split(",") : []);
-                        if (arr.some(writer => String(writer).toLowerCase().includes(writerQuery))) wMatch = true;
-                    }
-                    if (!wMatch && !s.metadata) {
-                        for (let b of s.books) {
-                            if (b.metadata && b.metadata.author && String(b.metadata.author).toLowerCase().includes(writerQuery)) {
-                                wMatch = true; break;
-                            }
-                        }
-                    }
+                    const wMatch = getSeriesMetadataValues(s, ["writers", "writer", "creators", "creator", "author", "authors"])
+                        .some(writer => writer.toLowerCase().includes(writerQuery));
                     if (!wMatch) match = false;
                 }
                 
@@ -2278,24 +2284,11 @@ class BookshelfView extends ItemView {
                 for (let s of data.series) {
                     let match = true;
                     
-                    if (statusQuery) {
-                        if (!s.metadata || s.metadata.status !== statusQuery) match = false;
-                    }
+                    if (statusQuery && getSeriesMetadataValue(s, ["status", "publication status"]) !== statusQuery) match = false;
                     
                     if (match && writerQuery) {
-                        let wMatch = false;
-                        if (s.metadata && s.metadata.writers) {
-                            let w = s.metadata.writers;
-                            let arr = Array.isArray(w) ? w : (typeof w === "string" ? w.split(",") : []);
-                            if (arr.some(writer => String(writer).toLowerCase().includes(writerQuery))) wMatch = true;
-                        }
-                        if (!wMatch && !s.metadata) {
-                            for (let b of s.books) {
-                                if (b.metadata && b.metadata.author && String(b.metadata.author).toLowerCase().includes(writerQuery)) {
-                                    wMatch = true; break;
-                                }
-                            }
-                        }
+                        const wMatch = getSeriesMetadataValues(s, ["writers", "writer", "creators", "creator", "author", "authors"])
+                            .some(writer => writer.toLowerCase().includes(writerQuery));
                         if (!wMatch) match = false;
                     }
                     
@@ -4887,25 +4880,11 @@ class BookshelfServer {
                 
                 if (qSeries && !title.includes(qSeries) && !alias.includes(qSeries)) return false;
                 
-                if (qWriter) {
-                    let wMatch = false;
-                    if (s.metadata && s.metadata.writers) {
-                        let w = s.metadata.writers;
-                        let arr = Array.isArray(w) ? w : (typeof w === "string" ? w.split(",") : []);
-                        if (arr.some(writer => String(writer).toLowerCase().includes(qWriter))) wMatch = true;
-                    }
-                    if (!wMatch && !s.metadata) {
-                        for (let b of s.books) {
-                            if (b.metadata && b.metadata.author && String(b.metadata.author).toLowerCase().includes(qWriter)) {
-                                wMatch = true; break;
-                            }
-                        }
-                    }
-                    if (!wMatch) return false;
-                }
+                if (qWriter && !getSeriesMetadataValues(s, ["writers", "writer", "creators", "creator", "author", "authors"])
+                    .some(writer => writer.toLowerCase().includes(qWriter))) return false;
                 
                 if (qStatus !== "Any Status") {
-                    const status = (s.metadata && s.metadata.status) ? s.metadata.status : "Ongoing";
+                    const status = getSeriesMetadataValue(s, ["status", "publication status"]) || "Ongoing";
                     if (status !== qStatus) return false;
                 }
 
